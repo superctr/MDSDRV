@@ -1,0 +1,11 @@
+/bin/*
+/obj/*
+doxygen
+*.vgm
+ctrmml
+*.lst
+main.bin
+mdsdrv.bin
+a.exe
+a.out
+error.txt

@@ -1,0 +1,262 @@
+
+DEBUG_SCREEN equ 1
+
+	include "mddef.inc"
+	include "mdsdrv.inc"
+	include "mdsseq.inc"
+	include "main.inc"
+
+	include "mdinit.68k"
+	include "mdlib.68k"
+	include "mdbug.68k"
+	include "mdsdrv.68k"
+
+main:
+	jsr		vdp_init
+
+;	printa	2,5, #hello_str, 0, 5
+;	printa	3,5, #from_sega, 0, 20
+;	printa	3,5+5, #from_sega_really, 0, 20
+
+	bsr.w	pad_init
+
+	lea		r_driver,a0
+	lea		sdtop(pc),a1
+	bsr.w	mds_init
+
+	clr.w	d0
+	move.w	d0,r_intcnt
+	move.w	d0,r_pcount0
+	move.w	d0,r_pcount1
+
+	lea		print_instructions(pc),a0
+	bsr.w	print_command
+	bsr.w	print_driver_text
+
+	move.w	#$8174,vdp_control	; main screen turn on
+	move.w	#$2300,sr			; interrupt enable
+
+;====================================================================
+; Main loop
+;--------------------------------------------------------------------
+main_loop:
+	move.w	r_intcnt,d0
+@wait_vbl
+	move.w	r_intcnt,d1
+	eor.w	d0,d1
+	beq.s	@wait_vbl
+
+	bsr.w	read_input
+	bsr.w	print_counters
+	bsr.w	print_options
+	bsr.w	print_driver_values
+	bra.w	main_loop
+
+;====================================================================
+; Print track struct data values
+;--------------------------------------------------------------------
+read_input:
+	lea		r_request,a0
+	move.w	joy1_press,d0
+	btst	#joy_bit_up,d0
+	bne.s	@up_pressed
+	btst	#joy_bit_down,d0
+	bne.s	@down_pressed
+;	btst	#joy_bit_left,d0
+;	bne		@left_pressed
+;	btst	#joy_bit_right,d0
+;	bne		@right_pressed
+	btst	#joy_bit_a,d0
+	bne.s	@a_pressed
+	btst	#joy_bit_b,d0
+	bne.s	@b_pressed
+;	btst	#joy_bit_start,d0
+;	bne		@start_pressed
+@exit
+	rts
+@up_pressed
+	cmp.w	#$0000,(a0)
+	beq.s	@exit
+	subq.w	#1,(a0)
+	rts
+@down_pressed
+	cmp.w	#SOUND_MAX,(a0)
+	beq.s	@exit
+	addq.w	#1,(a0)
+	rts
+@a_pressed	;start track
+	move.w	(a0),d0
+	move.w	#3,d1
+	lea		r_driver,a0
+	bra		mds_request
+@b_pressed	;stop track
+	move.w	#$8000,d0
+	move.w	#3,d1
+	lea		r_driver,a0
+	bra		mds_request
+
+;====================================================================
+; Print menu options
+;--------------------------------------------------------------------
+print_options:
+	suba.l	a1,a1
+	clr.w	d1
+	lea		@plist(pc),a0
+	bsr.w	print_command
+	rts
+	
+@plist
+	p_palette	0
+	p_pos		24,11
+	p_hex_w		r_request
+	p_end
+	even
+
+;====================================================================
+; Print track struct data descriptions
+;--------------------------------------------------------------------
+print_driver_text:
+	clr.w	d1
+	lea		print_track_data_begin(pc),a0
+	bsr.w	print_command
+	move.w	#9,d7
+@loop
+	lea		@plist(pc),a0
+	bsr.w	print_next
+	dbra	d7,@loop
+	rts
+	
+@plist
+	p_palette	1
+	;			 0123456789abcdef0123456789abcdef0123
+	p_text		" Req** Ch** Base******** Pos**** S**"
+	p_shift		1,0
+	p_text		" F**** W** N** @** v** M** k**** G**"
+	p_shift		1,0
+	p_end
+	even
+
+;====================================================================
+; Print track struct data values
+;--------------------------------------------------------------------
+print_driver_values:
+	clr.w	d1
+	lea		print_track_data_begin(pc),a0
+	bsr.w	print_command
+	lea		r_driver+w_track,a1
+	move.w	#9,d7
+@loop
+	lea		@plist(pc),a0
+	bsr.w	print_next
+	lea		TSIZE(a1),a1				;next track
+	dbra	d7,@loop
+	rts
+	
+@plist
+	p_palette	0
+	p_shift		0,4
+	p_hex_b		t_request_id
+	p_shift		0,5
+	p_hex_b		t_channel_id
+	p_shift		0,7
+	p_hex_l		t_base_addr
+	p_shift		0,12
+	p_hex_w		t_position
+	p_shift		0,6
+	p_hex_b		t_stack_pos
+
+	p_shift		1,-32
+	p_hex_w		t_note_flag
+	p_shift		0,2
+	p_hex_b		t_channel_flag
+	p_shift		0,4
+	p_hex_b		t_counter
+	p_shift		0,4
+	p_hex_b		t_note
+	p_shift		0,4
+	p_hex_b		t_ins
+	p_shift		0,4
+	p_hex_b		t_vol
+	p_shift		0,4
+	p_hex_b		t_peg_pos
+	p_shift		0,4
+	p_hex_b		t_trs
+	p_shift		0,2
+	p_hex_b		t_dtn
+	p_shift		0,4
+	p_hex_b		t_pta
+
+	p_shift		1,-34
+	p_end
+	even
+
+;====================================================================
+; Print vbl counters
+;--------------------------------------------------------------------
+print_counters:
+	suba.l	a1,a1
+	clr.w	d1
+	cmp.w	#$10000-$e000,r_pcount1
+	bcs.s	@not_lagging
+	add.w	#$6000,d1
+@not_lagging
+	lea		@plist(pc),a0
+	bsr.w	print_command
+	rts
+@plist
+	p_pos		1,25
+	p_hex_w		r_intcnt
+	p_shift		0,5
+	p_hex_w		r_pcount0
+	p_shift		0,5
+	p_hex_w		r_pcount1
+	p_end
+	even
+
+;====================================================================
+; VBL
+;--------------------------------------------------------------------
+vbl:
+	movem.l	d0-d7/a0-a6,-(sp)
+	bsr.w	pad_read
+
+;	move.w	vdp_counter,d0
+;	move.w	d0, r_pcount0
+	lea		r_driver,a0
+	bsr.w	mds_update
+	
+	addq	#1, r_intcnt
+	move.w	vdp_counter,d0
+	move.w	d0, d1
+	neg.w	d0
+	move.w	d0, r_pcount0
+	sub.w	#$e000, d1
+	move.w	d1, r_pcount1
+	
+	movem.l	(sp)+,d0-d7/a0-a6
+	rte
+hbl:
+	rte
+	
+print_track_data_begin
+	p_pos		3,2
+	p_end
+
+print_instructions
+	p_palette	0
+	p_pos		1,2
+	p_text		"MDSDRV Test Program"
+	p_pos		24,24
+	p_text		"Up/Down: Select"
+	p_shift		1,-1
+	p_text		"A: Play, B: Stop"
+;	p_shift		1,-2
+;	p_text		"Start: Change info"
+	p_pos		24,6
+	p_text		"BGM:"
+;	p_shift		1,0
+;	p_text		"SE:"
+	p_end
+
+	even
+	include "sdata.asm"

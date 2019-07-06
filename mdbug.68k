@@ -1,0 +1,297 @@
+;======================================================================
+; Crash Debugger
+;======================================================================
+
+	if def(DEBUG_SCREEN)
+
+; Address error or bus error:
+; +----+-----------------+-----------------+
+; | SP | 15-8            | 7-0             | a= 0=write / 1=read
+; +----+-----------------+-----------------+ b= 0=instruction / 1=not
+; |  0 |    - null -       0 0 0 a b c c c | c= function code
+; | +2 | Access Adress                     |
+; | +6 | Instruction Register              |
+; | +8 | SR                                |
+; | +10| PC                                |
+; +---+------------------------------------+
+;
+; Other:
+; +----+-----------------+-----------------+
+; | SP | 15-8            | 7-0             |
+; +----+-----------------+-----------------+
+; | +0 | SR                                |
+; | +2 | PC                                |
+; +---+------------------------------------+
+
+bug_def		macro
+	dc.w	vram_plane_a+((\1)<<7)|((\2)<<1)
+	;		 012345
+	dc.b	" "
+	dc.b	'\3'
+	dc.b	": $"
+	endm
+
+bug_tab
+	bug_def	13,5,  d0
+	bug_def	13,20, d1
+	bug_def	14,5,  d2
+	bug_def	14,20, d3
+	bug_def	15,5,  d4
+	bug_def	15,20, d5
+	bug_def	16,5,  d6
+	bug_def	16,20, d7
+	bug_def	 8,5,  a0
+	bug_def	 8,20, a1
+	bug_def	 9,5,  a2
+	bug_def	 9,20, a3
+	bug_def	10,5,  a4
+	bug_def	10,20, a5
+	bug_def	11,5,  a6
+	bug_def	11,20, sp
+bug_tab2
+	bug_def	 6, 20, sr
+	bug_def	 6, 5,  pc
+
+t_bug		dc.b	"Dammit, ctr fucked up again!",0
+
+;                    2345678901234567890123456789
+t_exception dc.b	"",0
+t_buserror	dc.b	"Bus error",0
+t_adrerror	dc.b	"Address error",0
+t_illinstr	dc.b	"Illegal instruction",0
+t_divzero	dc.b	"Division by zero",0
+t_chk		dc.b	"CHK",0
+t_trapv		dc.b	"TRAPV",0
+t_linea		dc.b	"Line 1010",0
+t_linef		dc.b	"Line 1111",0
+	even
+
+i_exception	movem.l	d0-a7,-(sp)
+	lea		t_exception(pc),a6
+	bra.w	bug
+i_buserror	movem.l	d0-a7,-(sp)	;08 Bus Error
+	lea		t_buserror(pc),a6
+	bra.w	bug_addr
+i_adrerror	movem.l	d0-a7,-(sp)	;0C Adress Error
+	lea		t_adrerror(pc),a6
+	bra.w	bug_addr
+i_illinstr	movem.l	d0-a7,-(sp)	;10 Illegal Instruction
+	lea		t_illinstr(pc),a6
+	bra.w	bug
+i_divzero	movem.l	d0-a7,-(sp)	;14 Division by Zero
+	lea		t_divzero(pc),a6
+	bra.w	bug
+i_chk		movem.l	d0-a7,-(sp)	;18 CHK Instruction
+	lea		t_chk(pc),a6
+	bra.w	bug
+i_trapv		movem.l	d0-a7,-(sp)	;1C TRAPV Instruction
+	lea		t_trapv(pc),a6
+	bra.w	bug
+i_linea		movem.l	d0-a7,-(sp)	;28 Line 1010 Emulator
+	lea		t_linea(pc),a6
+	bra.w	bug
+i_linef		movem.l	d0-a7,-(sp)	;2C Line 1111 Emulator
+	lea		t_linef(pc),a6
+	bra.w	bug
+
+;======================================================================
+; Print register name from table, and its value
+;======================================================================
+print_bug_def
+	move.w	(a0)+,d0
+	bsr.w	vdp_pos
+	moveq.l	#6,d1
+	bsr.w	vdp_print
+	move.l	(a5)+,d2
+	bra.w	vdp_print_hex_l
+
+;======================================================================
+; Address error bug screen
+;======================================================================
+bug_addr
+	moveq	#1,d7
+	bra.s	bug1
+
+;======================================================================
+; Normal bug screen
+;======================================================================
+bug
+	moveq	#0,d7
+bug1
+	move	#$2700,sr
+
+	bsr.w	vdp_init
+	move.l	a7,a5				;pointer to exception frame
+
+	move.w	#vram_plane_a+(2<<7)|(5<<1), d0
+	bsr.w	vdp_pos
+	lea		t_bug(pc),a0
+	moveq	#35,d1
+	bsr.w	vdp_print
+
+	move.w	#vram_plane_a+(4<<7)|(5<<1), d0
+	bsr.w	vdp_pos
+	move.l	a6,a0
+	moveq	#35,d1
+	bsr.w	vdp_print
+
+	; print registers
+	lea		bug_tab(pc),a0
+	moveq	#15,d3
+@loop
+	bsr.s	print_bug_def
+	dbra	d3, @loop
+
+	; address error?
+	tst.b	d7
+	beq		@skip_address
+
+	; print access type
+	move.w	#vram_plane_a+(18<<7)|(5<<1), d0
+	bsr.w	vdp_pos
+	move.w	(a5)+,d3
+	moveq.l	#@access_size,d4
+	move.w	d4,d0			;write/read
+	move.w	d4,d1
+	btst	#3,d3
+	bne.s	@is_read
+	clr.w	d0
+
+@is_read
+	lea		@writing_text(pc,d0),a0
+	bsr.w 	vdp_print
+	move.w	d4,d0			;data/code
+	move.w	d4,d1
+	btst	#4,d3
+	beq.s	@is_code
+	clr.w	d0
+
+@is_code
+	lea		@data_text(pc,d0),a0
+	bsr.w 	vdp_print
+	move.l	(a5)+,d2
+	bsr.w	vdp_print_hex_l
+	addq	#2,a5
+
+@skip_address
+	lea		bug_tab2(pc),a0
+
+	move.w	(a0)+,d0		; print SR
+	bsr.w	vdp_pos
+	moveq.l	#6,d1
+	bsr.w	vdp_print
+	move.w	(a5)+,d2
+	bsr.w	vdp_print_hex_w
+
+	bsr.w	print_bug_def	; print PC
+
+	move.w	#$8144, $C00004	; Turn on screen.
+	bra.s	bug_memory_viewer
+
+;00 writ data
+;01 writ inst
+;10 read data
+;11 read inst
+;           	         0123456789abcdef01
+@writing_text	dc.b	" writing "
+@reading_text	dc.b	" reading "
+@data_text		dc.b	"data at $"
+@code_text		dc.b	"code at $"
+
+@access_size	equ		@reading_text-@writing_text
+
+;======================================================================
+; Memory viewer.
+;  up    = address-$10
+;  down  = address+$10
+;  left  = address-$60
+;  right = address+$60
+;  start = reset
+;======================================================================
+bug_memory_viewer
+	bsr.w	pad_init
+	clr.w	d6
+	
+@update
+	move.w	#vram_plane_a+(20<<7)|(1<<1), d5
+	move.w	#5,d4				; draw $60 bytes
+	clr.w	d1
+
+@row_loop
+	swap	d4
+	move.w	d5,d0
+	bsr.w	vdp_pos
+	move	a5,d2
+	bsr.w	vdp_print_hex_w
+	move.w	#7,d4
+	move.l	#$001a0000, vdp_data	; ': '
+
+@word_loop
+	move.w	(a5)+,d2
+	bsr.w	vdp_print_hex_w
+	eor.w	#$2000,d1			; alternate color
+	dbra	d4, @word_loop
+
+	add.w	#(1<<7), d5
+	swap	d4
+	dbra	d4,@row_loop
+
+@wait_vbl:
+	move.w	d6,d0
+	move.w	vdp_control,d1
+	eor.w	d1,d0
+	btst	#3,d0
+	beq		@wait_vbl			; vbl didn't change
+	move.w	d1,d6
+	btst	#3,d1
+	beq		@wait_vbl			; not in vbl
+
+	bsr.w	pad_read
+	move.w	joy1_press,d0
+	btst	#joy_bit_up,d0
+	bne		@up_pressed
+	btst	#joy_bit_down,d0
+	bne		@down_pressed
+	btst	#joy_bit_left,d0
+	bne		@left_pressed
+	btst	#joy_bit_right,d0
+	bne		@right_pressed
+	btst	#joy_bit_start,d0
+	bne		@start_pressed
+	bra.s	@wait_vbl
+
+@up_pressed
+	subi.w	#$20,a5				; minus $10
+@down_pressed
+	subi.w	#$50,a5				; plus  $10
+	bra.w	@update
+
+@left_pressed
+	subi.w	#$60,a5				; minus $60
+@right_pressed
+	bra.w	@update
+
+@start_pressed
+	suba.l	a0,a0
+	move.l	(a0)+,sp	;reset system
+	move.l	(a0)+,a0
+	jmp		(a0)
+
+;======================================================================
+; No crash debugger
+;======================================================================
+
+	else	;~def(DEBUG_SCREEN)
+
+i_exception
+i_buserror
+i_adrerror
+i_illinstr
+i_divzero
+i_chk
+i_trapv
+i_linea
+i_linef
+	stop $2700
+
+	endif	;def(DEBUG_SCREEN)

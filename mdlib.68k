@@ -1,0 +1,501 @@
+;======================================================================
+; MD programming library
+;======================================================================
+
+;======================================================================
+; initializing VDP and loads a font and palette.
+;----------------------------------------------------------------------
+; TRASHES
+;   a0-a1, d0-d5
+vdp_init:
+	tst.w	vdp_data
+
+	lea		@reg_table(pc),a0
+	move.l	#vdp_control,a1
+
+@copy_reg_loop
+	move.w	(a0)+, d0
+	beq.s	@end
+	move.w	d0, (a1)
+	bra.s	@copy_reg_loop
+@end
+	bsr.w	vdp_clear
+	bra.w	vdp_init_font
+	
+@reg_table:
+	dc.w	$8004	; 0 hint off, counter on
+	dc.w	$8114	; 1 disp off, vint off, dma on, v28
+	dc.w	$8228	; 2 plane a = $a000
+	dc.w	$832C	; 3 window  = $b000
+	dc.w	$8406	; 4 plane b = $c000
+	dc.w	$8568	; 5 sprite  = $d000
+	dc.w	$8600	; 6 unused
+	dc.w	$8700	; 7 bg color = 0,0
+	dc.w	$8800	; 8 unused
+	dc.w	$8900	; 9 unused
+	dc.w	$8A10	;10 hint interval = 16
+	dc.w	$8B00	;11 exint off
+	dc.w	$8C81	;12 h40, s/h off, interlace off
+	dc.w	$8D38	;13 hscroll = $e000
+	dc.w	$8E00	;14 unused
+	dc.w	$8F02	;15 auto increment = 2
+	dc.w	$9011	;16 scroll 64x64
+	dc.w	$9100	;17 window position = left
+	dc.w	$9200	;18 window position = top
+	dc.w	$9300	;19 dma size (low)
+	dc.w	$9400	;20 dma size (high)
+	dc.w	$9500	;21 dma source (low)
+	dc.w	$9600	;22 dma source (mid)
+	dc.w	$9700	;23 dma source (high)
+	dc.w	$0000
+
+;======================================================================
+; clear VDP memory
+;----------------------------------------------------------------------
+; TRASHES
+;   a0-a1, d0-d5
+vdp_clear:
+	move.l	#vdp_control,a1
+	move.w	#$8f01,(a1)		; auto increment = 1
+	move.w	#$93ff,(a1)		; dma size = 65536
+	move.w	#$94ff,(a1)
+	move.w	#$9780,(a1)		; dma fill
+	move.l	#vram_dma_flag,(a1)	; begin adress
+	move.w	#0,vdp_data		; fill with zeros
+@dma_wait:	
+	move.w	(a1),d0
+	btst.l	#1,d0
+	bne		@dma_wait
+
+	move.w	#$8f02,(a1)		; auto increment = 2
+    move.l  #vsram_write_flag, (a1)
+	move.w	#19,d1
+@vsram_loop
+	move.l	#0,vdp_data		; clear vsram
+	dbra	d0,@vsram_loop
+
+	move.l	#cram_write_flag, (a1)
+	move.w	#63, d0
+@cram_loop:
+	move.w	#0, vdp_data	; clear cram
+	dbra	d0, @cram_loop
+	rts
+
+;======================================================================
+; write init font
+;----------------------------------------------------------------------
+; TRASHES
+;   a0-a1, d0-d5
+vdp_init_font
+	move.l	#vdp_control,a1
+
+	; init color
+	lea		init_color_data(pc), a0
+	move.l	#cram_write_flag, (a1)
+	move.w	#$3f, d0				; color count
+@next_pal:
+	move.w	(a0)+, vdp_data			; write palette data
+	dbra	d0, @next_pal
+
+	; init font
+	lea		init_font_data(pc), a0
+	move.l	#vram_write_flag,(a1)
+	move.w	#96,d0					; character count
+	; continue
+
+;======================================================================
+; write 1bpp font to VDP
+;----------------------------------------------------------------------
+; INPUT
+;   a0 = font data
+;	d0 = # of characters
+; TRASHES
+;   a0, d0-d5
+vdp_1bpp_font
+@next_character						;1bpp decode
+	clr.l	d4						;shadow pixel buffer
+	move.w	#7,d1
+@next_line
+	clr.l	d3
+	move.w	#7,d2
+	move.b	(a0)+,d5				;load line from rom
+@next_pixel
+	lsl.l	#4,d3					;shift output buffer
+	lsl.b	#1,d5					;shift input buffer
+	bcc.s	@cleared
+	or.b	#$0f,d3
+@cleared
+	dbra	d2, @next_pixel
+	move.l	d3,d5					; top secret 3d drop shadow calculation
+	or.l	d4,d5					; insert shadow from top
+	move.l	d3,d4
+	lsr.l	#4,d4
+	or.l	d3,d4
+	and.l	#$eeeeeeee,d4			; shadow palette mask
+	or.l	d4,d5					; insert shadow from left
+	move.l	d5, vdp_data
+	dbra	d1, @next_line
+	dbra	d0, @next_character
+	rts
+
+;======================================================================
+; system font data
+;----------------------------------------------------------------------
+init_font_data ;1bpp
+	dc.b	$00,$00,$00,$00,$00,$00,$00,$00,$08,$08,$08,$08,$00,$00,$08,$00
+	dc.b	$24,$24,$24,$00,$00,$00,$00,$00,$24,$24,$7e,$24,$7e,$24,$24,$00
+	dc.b	$08,$1e,$28,$1c,$0a,$3c,$08,$00,$00,$62,$64,$08,$10,$26,$46,$00
+	dc.b	$30,$48,$48,$30,$4a,$44,$3a,$00,$04,$08,$10,$00,$00,$00,$00,$00
+	dc.b	$04,$08,$10,$10,$10,$08,$04,$00,$20,$10,$08,$08,$08,$10,$20,$00
+	dc.b	$08,$2a,$1c,$3e,$1c,$2a,$08,$00,$00,$08,$08,$3e,$08,$08,$00,$00
+	dc.b	$00,$00,$00,$00,$00,$08,$08,$10,$00,$00,$00,$7e,$00,$00,$00,$00
+	dc.b	$00,$00,$00,$00,$00,$18,$18,$00,$00,$02,$04,$08,$10,$20,$40,$00
+	dc.b	$3c,$42,$46,$5a,$62,$42,$3c,$00,$08,$18,$28,$08,$08,$08,$3e,$00
+	dc.b	$3c,$42,$02,$0c,$30,$40,$7e,$00,$3c,$42,$02,$1c,$02,$42,$3c,$00
+	dc.b	$04,$0c,$14,$24,$7e,$04,$04,$00,$7e,$40,$78,$04,$02,$44,$38,$00
+	dc.b	$1c,$20,$40,$7c,$42,$42,$3c,$00,$7e,$42,$04,$08,$10,$10,$10,$00
+	dc.b	$3c,$42,$42,$3c,$42,$42,$3c,$00,$3c,$42,$42,$3e,$02,$04,$38,$00
+	dc.b	$00,$00,$08,$00,$00,$08,$00,$00,$00,$00,$08,$00,$00,$08,$08,$10
+	dc.b	$0e,$18,$30,$60,$30,$18,$0e,$00,$00,$00,$7e,$00,$7e,$00,$00,$00
+	dc.b	$70,$18,$0c,$06,$0c,$18,$70,$00,$3c,$42,$02,$0c,$10,$00,$10,$00
+	dc.b	$1c,$22,$4a,$56,$4c,$20,$1e,$00,$18,$24,$42,$7e,$42,$42,$42,$00
+	dc.b	$7c,$22,$22,$3c,$22,$22,$7c,$00,$1c,$22,$40,$40,$40,$22,$1c,$00
+	dc.b	$78,$24,$22,$22,$22,$24,$78,$00,$7e,$40,$40,$78,$40,$40,$7e,$00
+	dc.b	$7e,$40,$40,$78,$40,$40,$40,$00,$1c,$22,$40,$4e,$42,$22,$1c,$00
+	dc.b	$42,$42,$42,$7e,$42,$42,$42,$00,$1c,$08,$08,$08,$08,$08,$1c,$00
+	dc.b	$0e,$04,$04,$04,$04,$44,$38,$00,$42,$44,$48,$70,$48,$44,$42,$00
+	dc.b	$40,$40,$40,$40,$40,$40,$7e,$00,$42,$66,$5a,$5a,$42,$42,$42,$00
+	dc.b	$42,$62,$52,$4a,$46,$42,$42,$00,$18,$24,$42,$42,$42,$24,$18,$00
+	dc.b	$7c,$42,$42,$7c,$40,$40,$40,$00,$18,$24,$42,$42,$4a,$24,$1a,$00
+	dc.b	$7c,$42,$42,$7c,$48,$44,$42,$00,$3c,$42,$40,$3c,$02,$42,$3c,$00
+	dc.b	$3e,$08,$08,$08,$08,$08,$08,$00,$42,$42,$42,$42,$42,$42,$3c,$00
+	dc.b	$42,$42,$42,$24,$24,$18,$18,$00,$42,$42,$42,$5a,$5a,$66,$42,$00
+	dc.b	$42,$42,$24,$18,$24,$42,$42,$00,$22,$22,$22,$1c,$08,$08,$08,$00
+	dc.b	$7e,$02,$04,$18,$20,$40,$7e,$00,$3c,$20,$20,$20,$20,$20,$3c,$00
+	dc.b	$00,$40,$20,$10,$08,$04,$02,$00,$3c,$04,$04,$04,$04,$04,$3c,$00
+	dc.b	$00,$08,$14,$22,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$ff
+	dc.b	$10,$08,$04,$00,$00,$00,$00,$00,$00,$00,$38,$04,$3c,$44,$3a,$00
+	dc.b	$40,$40,$5c,$62,$42,$62,$5c,$00,$00,$00,$3c,$42,$40,$42,$3c,$00
+	dc.b	$02,$02,$3a,$46,$42,$46,$3a,$00,$00,$00,$3c,$42,$7e,$40,$3c,$00
+	dc.b	$0c,$12,$10,$7c,$10,$10,$10,$00,$00,$00,$3a,$46,$46,$3a,$02,$3c
+	dc.b	$40,$40,$5c,$62,$42,$42,$42,$00,$08,$00,$18,$08,$08,$08,$1c,$00
+	dc.b	$04,$00,$0c,$04,$04,$04,$44,$38,$40,$40,$44,$48,$50,$68,$44,$00
+	dc.b	$18,$08,$08,$08,$08,$08,$1c,$00,$00,$00,$76,$49,$49,$49,$49,$00
+	dc.b	$00,$00,$5c,$62,$42,$42,$42,$00,$00,$00,$3c,$42,$42,$42,$3c,$00
+	dc.b	$00,$00,$5c,$62,$62,$5c,$40,$40,$00,$00,$3a,$46,$46,$3a,$02,$02
+	dc.b	$00,$00,$5c,$62,$40,$40,$40,$00,$00,$00,$3e,$40,$3c,$02,$7c,$00
+	dc.b	$10,$10,$7c,$10,$10,$12,$0c,$00,$00,$00,$42,$42,$42,$46,$3a,$00
+	dc.b	$00,$00,$42,$42,$42,$24,$18,$00,$00,$00,$41,$49,$49,$49,$36,$00
+	dc.b	$00,$00,$42,$24,$18,$24,$42,$00,$00,$00,$42,$42,$46,$3a,$02,$3c
+	dc.b	$00,$00,$7e,$04,$18,$20,$7e,$00,$06,$08,$08,$30,$08,$08,$06,$00
+	dc.b	$08,$08,$08,$08,$08,$08,$08,$08,$30,$08,$08,$06,$08,$08,$30,$00
+	dc.b	$31,$49,$46,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00
+
+init_color_data
+	dc.w	$0000,$0000,$0000,$0000,$0000,$0000,$0000,$0000
+	dc.w	$0000,$0000,$0000,$0000,$0000,$0000,$0a00,$0eee
+	dc.w	$0000,$0000,$0000,$0000,$0000,$0000,$0000,$0000
+	dc.w	$0000,$0000,$0000,$0000,$0000,$0000,$0a00,$0888
+	dc.w	$0000,$0000,$0000,$0000,$0000,$0000,$0000,$0000
+	dc.w	$0000,$0000,$0000,$0000,$0000,$0000,$0aaa,$00e0
+	dc.w	$0000,$0000,$0000,$0000,$0000,$0000,$0000,$0000
+	dc.w	$0000,$0000,$0000,$0000,$0000,$0000,$0000,$000e
+
+;======================================================================
+; Setup VRAM write
+;----------------------------------------------------------------------
+; INPUT
+;	d0 = VRAM address
+;		H64 = (row << 6) | column
+;		H32 = (row << 5) | column
+vdp_pos:
+	setup_vram_write	d0
+	rts
+
+;======================================================================
+; VDP print using system font
+;----------------------------------------------------------------------
+; INPUT
+;   a0 = text pointer
+;	d1 = bit15-8, Character flags, bit7-0, write count
+; OUTPUT
+;   a0 = Last character that was written
+;   d0 = 0
+; TRASHES
+;	a0, d0-d1
+vdp_print:
+	move.w	d1,d0
+@loop
+	move.b	(a0)+,d0
+	beq.s	@end
+	subi.b	#32,d0
+	move.w	d0, vdp_data
+	subq.b	#1,d1
+	bne.s	@loop
+	moveq	#-1,d0	; nonzero marks that string wasn't read to the end
+@end
+	rts
+
+;======================================================================
+; Pads a string, used in companion with vdp_print
+;----------------------------------------------------------------------
+; INPUT
+;   a0 = pointer to string data
+;	d1 = # of bytes to pad
+; TRASHES
+;	d0-d1
+vdp_pad:
+	tst.b	d0
+	bne.s	finish_string2
+@loop
+	move.w	d0, vdp_data
+	subq.b	#1,d1
+	bne.s	@loop
+
+;======================================================================
+; Read to the end of a string
+;----------------------------------------------------------------------
+; OUTPUT
+;   a0 = End of the string
+finish_string
+	tst.b	d0
+	bne.s	finish_string2
+	rts
+finish_string2
+	tst.b	(a0)+
+	bne.s	finish_string2
+	rts
+
+;======================================================================
+; VDP print hex
+;----------------------------------------------------------------------
+; INPUT
+;	d1 = bit15-8, Character flags
+;	d2 = data to write
+; OUTPUT
+;   a0 = End of the string
+; TRASHES
+;	a0, d0-d2
+vdp_print_hex_l
+	move.b	#8,d1
+	bra.s	vdp_print_hex
+vdp_print_hex_w
+	move.b	#4,d1
+	swap	d2
+	bra.s	vdp_print_hex
+vdp_print_hex_b
+	move.b	#2,d1
+	ror.l	#8,d2
+vdp_print_hex:
+	move.w	d1,d0
+@loop
+	move.b	#$0f,d0
+	rol.l	#4,d2
+	and.b	d2,d0
+	addi.b	#$10,d0
+	cmpi.b	#$1a,d0		;abcdef
+	bcs		@num
+	addq.b	#7,d0
+@num
+	move.w	d0, vdp_data
+	subq.b	#1,d1
+	bne.s	@loop
+	rts
+
+;======================================================================
+; Print command list.
+;----------------------------------------------------------------------
+; INPUT
+;	a0 = Pointer to command list
+;	a1 = Initial structure offset (only print_structure or print_next)
+;	d0 = Initial VDP location
+;	d1 = Initial print flags
+; OUTPUT
+;   a0 = End of the string
+;   a1 = Final structure offset
+; TRASHES
+;	a2, d0-d4
+print_command
+	sub.l	a1,a1
+print_structure
+	move.w	d0,d4
+print_next
+@next_cmd
+	move.b	d4,d1
+	add.b	#40<<1,d1
+	sub.b	d4,d1
+	and.b	#$7f,d1
+	lsr.b	d1
+
+	clr.l	d2
+	move.b	(a0)+,d2
+	lsl.w	#2,d2
+	jmp		@cmd_list(pc,d2)
+
+@cmd_list
+	rts									;00
+	nop
+	bra.w	@cmd_set_location			;01
+	bra.w	@cmd_modify_location		;02
+	bra.w	@cmd_print_flags			;03
+	bra.w	@cmd_print_len				;04
+	bra.w	@cmd_print					;05
+	bra.w	@cmd_set_struct_offset		;06
+	bra.w	@cmd_modify_struct_offset	;07
+	bra.w	@cmd_print_hex_b			;08
+	bra.w	@cmd_print_hex_w			;09
+	bra.w	@cmd_print_hex_l			;0a
+
+@cmd_set_location				; 01 Set VDP coordinates
+	clr.w	d4
+@cmd_modify_location			; 02 Modify VDP coordinates
+	clr.w	d2
+;	move.b	(a0)+,d2
+;	lsl.w	#8,d2
+;	move.b	(a0)+,d2
+	move.b	(a0)+,-(sp)
+	move.w	(sp)+,d2
+	move.b	(a0)+,d2
+	add.w	d2,d4
+	move.w	d4,d2
+	setup_vram_write d2
+	bra.w	@next_cmd
+
+@cmd_print_flags				; 03 Set print flags
+	move.b	(a0)+,d1
+	lsl.w	#8,d1
+	bra.w	@next_cmd
+
+@cmd_print_len					; 04 Print + padding
+	move.b	(a0)+,d1
+	bsr.w	vdp_print
+	bsr.w	vdp_pad
+	bra.w	@next_cmd
+
+@cmd_print						; 05 Print
+	bsr.w	vdp_print
+	bsr.w	finish_string
+	bra.w	@next_cmd
+
+@cmd_set_struct_offset			; 06 Set struct offset
+	sub.l	a1,a1
+@cmd_modify_struct_offset		; 07 Modify struct offset
+	move.b	(a0)+,d2
+	swap	d2
+	move.b	(a0)+,-(sp)			; move to high byte of (sp)
+	move.w	(sp)+,d2
+	move.b	(a0)+,d2
+	add.l	d2,a1
+	bra.w	@next_cmd
+
+@cmd_print_hex_b				; 08 Print byte hex
+	bsr.w	@get_location
+	move.b	(a2),d2
+	bsr.w	vdp_print_hex_b
+	bra.w	@next_cmd
+
+@cmd_print_hex_w				; 09 Print word hex
+	bsr.w	@get_location
+	move.w	(a2),d2
+	bsr.w	vdp_print_hex_w
+	bra.w	@next_cmd
+	
+@cmd_print_hex_l				; 0a Print long hex
+	bsr.w	@get_location
+	move.l	(a2),d2
+	bsr.w	vdp_print_hex_l
+	bra.w	@next_cmd
+	
+@get_location
+	move.b	(a0)+,d2
+	swap	d2
+	move.b	(a0)+,-(sp)			;  move to high byte of (sp)
+	move.w	(sp)+,d2
+	move.b	(a0)+,d2
+;	lsl.l	#8,d2
+;	move.b	(a0)+,d2
+;	lsl.l	#8,d2
+;	move.b	(a0)+,d2
+	move.l	a1,a2
+	add.l	d2,a2
+	rts
+
+;==============================================================================
+; Sets up joypads
+;------------------------------------------------------------------------------
+; TRASHES
+;   d0
+pad_init:
+	reset_z80
+	stop_z80
+	moveq	#$40,d0
+	move.b	d0,($A10009).l	; init port 1 (joypad 1)
+	move.b	d0,($A1000B).l	; init port 2 (joypad 2)
+	move.b	d0,($A1000D).l	; init port 3 (expansion)
+	start_z80
+	rts	
+
+;==============================================================================
+; Reads joypads. Call in vblank
+;------------------------------------------------------------------------------
+; TRASHES
+;   a0-a1, d1-d2
+pad_read:
+
+	lea		joy1_push(pc),a1	; address where joypad states are written
+	lea		$A10003,a0			; first	joypad port
+
+	bsr.b	@get_pad
+	
+	move.w	(a1),d1				; last push
+	eor.w	d2,d1
+	move.w	d2,(a1)+			; store push
+	and.w	d1,d2				; closed buttons only
+	move.w	d2,(a1)				; store press
+
+	rts
+		
+; this joypad routine was written by Chilly Willy from gendev forum
+; http://gendev.spritesmind.net/forum/viewtopic.php?p=9136
+; get current pad value
+; entry: a0 = pad control port
+; exit:  d2 = pad value (0 0 0 1 M X Y Z S A C B R L D U) or (0 0 0 0 0 0 0 0 S A C B R L D U)
+@get_pad:
+	stop_z80
+	bsr.b	@get_input		;/* - 0 s a 0 0 d u - 1 c b r l d u */
+	move.w	d0,d1
+	andi.w	#0x0C00,d0
+	bne.b	@no_pad
+	bsr.b	@get_input		;/* - 0 s a 0 0 d u - 1 c b r l d u */
+	bsr.b	@get_input		;/* - 0 s a 0 0 0 0 - 1 c b m x y z */
+	move.w	d0,d2
+	bsr.b	@get_input		;/* - 0 s a 1 1 1 1 - 1 c b r l d u */
+	start_z80
+	andi.w	#0x0F00,d0		;/* 0 0 0 0 1 1 1 1 0 0 0 0 0 0 0 0 */
+	cmpi.w	#0x0F00,d0
+	beq.b	@common			;/* six button pad */
+	move.w	#0x010F,d2		;/* three button pad */
+@common:
+	lsl.b	#4,d2			;/* - 0 s a 0 0 0 0 m x y z 0 0 0 0 */
+	lsl.w	#4,d2			;/* 0 0 0 0 m x y z 0 0 0 0 0 0 0 0 */
+	andi.w	#0x303F,d1		;/* 0 0 s a 0 0 0 0 0 0 c b r l d u */
+	move.b	d1,d2			;/* 0 0 0 0 m x y z 0 0 c b r l d u */
+	lsr.w	#6,d1			;/* 0 0 0 0 0 0 0 0 s a 0 0 0 0 0 0 */
+	or.w	d1,d2			;/* 0 0 0 0 m x y z s a c b r l d u */
+	eori.w	#0x1FFF,d2		;/* 0 0 0 1 M X Y Z S A C B R L D U */
+	rts
+
+@no_pad:
+	move.w  #0xF000,d2
+	rts
+
+; read single phase from controller
+@get_input:
+	move.b  #0x00,(a0)
+	nop
+	nop
+	move.b	(a0),d0
+	move.b	#0x40,(a0)
+	lsl.w	#8,d0
+	move.b	(a0),d0
+	rts 

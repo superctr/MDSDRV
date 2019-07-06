@@ -1,0 +1,140 @@
+
+	org $0;
+md_init
+	dc.l	$fffffff0	;	initial stack pointer
+	dc.l	entry		;	initial program counter (entrypoint)
+
+	dc.l	i_buserror	;	bus error
+	dc.l	i_adrerror	;	address error
+	dc.l	i_illinstr	;	illegal instruction
+	dc.l	i_divzero	;	division by zero
+	dc.l	i_chk		;	chk exception
+	dc.l	i_trapv		;	trapv exception
+	dc.l	i_exception	;	privilege violation
+	dc.l	i_exception	;	trace exception
+	dc.l	i_linea		;	line a / 1010 exception
+	dc.l	i_linef		;	line f / 1111 exception
+	dc.l	@unhandled	;	$0030 / reserved
+	dc.l	@unhandled	;	coprocessor protocol violation
+	dc.l	@unhandled	;	format error
+	dc.l	@unhandled	;	uninitialized interrupt
+	dc.l	@unhandled	;	$0040 / reserved
+	dc.l	@unhandled	;	$0044 / reserved
+	dc.l	@unhandled	;	$0048 / reserved
+	dc.l	@unhandled	;	$004c / reserved
+	dc.l	@unhandled	;	$0040 / reserved
+	dc.l	@unhandled	;	$0044 / reserved
+	dc.l	@unhandled	;	$0048 / reserved
+	dc.l	@unhandled	;	$004c / reserved
+	dc.l	@unhandled	;	spurious interrupt
+	dc.l	@unhandled	;	irq 1
+	dc.l	@unhandled	;	irq 2 / external interrupt
+	dc.l	@unhandled	;	irq 3
+	dc.l	hbl			;	irq 4 / hblank
+	dc.l	@unhandled	;	irq 5
+	dc.l	vbl			;	irq 6 / vblank
+	dc.l	@unhandled	;	irq 7
+	dc.l	@unhandled	;	trap 0
+	dc.l	@unhandled	;	trap 1
+	dc.l	@unhandled	;	trap 2
+	dc.l	@unhandled	;	trap 3
+	dc.l	@unhandled	;	trap 4
+	dc.l	@unhandled	;	trap 5
+	dc.l	@unhandled	;	trap 6
+	dc.l	@unhandled	;	trap 7
+	dc.l	@unhandled	;	trap 8
+	dc.l	@unhandled	;	trap 9
+	dc.l	@unhandled	;	trap 10
+	dc.l	@unhandled	;	trap 11
+	dc.l	@unhandled	;	trap 12
+	dc.l	@unhandled	;	trap 13
+	dc.l	@unhandled	;	trap 14
+	dc.l	@unhandled	;	trap 15
+	dc.l	@unhandled	;	fp error (följande används inte på segan)
+	dc.l	@unhandled	;	fp error
+	dc.l	@unhandled	;	fp error
+	dc.l	@unhandled	;	fp error
+	dc.l	@unhandled	;	fp error
+	dc.l	@unhandled	;	fp error
+	dc.l	@unhandled	;	fp error
+	dc.l	@unhandled	;	fp error
+	dc.l	@unhandled	;	mmu error
+	dc.l	@unhandled	;	mmu error
+	dc.l	@unhandled	;	mmu error
+	dc.l	@unhandled	;	$00ec / reserved
+	dc.l	@unhandled	;	$00f0 / reserved
+	dc.l	@unhandled	;	$00f4 / reserved
+	dc.l	@unhandled	;	$00f8 / reserved
+	dc.l	@unhandled	;	$00fc / reserved	
+
+	dc.b	'SEGA MEGA DRIVE '									;	Konsolnamn
+	dc.b	'(C) CTR 2019.JUN'									;	Copyright
+	dc.b	'                                                '	;	Japansk titel
+	dc.b	'MDSDRV Test Program                             '	;	Västerlänsk titel
+	dc.b	'GM XXXXXXXX-XX'									;	Produktnummer
+	dc.w	$0000												;	Kontrollsumma
+	dc.b	'J               '									;	Tillbehörskompatibilitet
+	dc.l	$00000000											;	Startadress för ROM
+	dc.l	$003FFFFF											;	Slutaddress för ROM
+	dc.l	$20202020											;	Startaddress för BRAM
+	dc.l	$20202020											;	Slutaddress för BRAM
+	dc.b	'                        '							;	Modemkompatibilitet
+	dc.b	'                                        '			;	memo
+;	dcb.b	*-$1E0,$20
+	dc.b	'JUE             '									;	Regionskompatibilitet
+
+	org $200;
+
+@unhandled:
+	stop	#$2700
+
+entry:
+	clr.l	d0
+	move.l	d0,a0
+	move    #$2700,sr
+	tst.l	io_port_1_control
+	bne.s	@port_initialized
+	tst.w	io_expansion_control
+@port_initialized:
+	bne.w	@system_initialized
+	move.b	io_version, d0
+	andi.b	#$0f,d0
+	beq.s	@no_tmss
+	move.l	#'SEGA',io_tmss
+@no_tmss:
+	moveq   #0,d0
+	lea		(vdp_control), a0
+	tst.l	(a0)
+	move.l  #cram_write_flag,(a0)
+	move.w  #$3F,d7
+@cram_clear:
+	move.w  d0,(vdp_data)
+	dbf     d7,@cram_clear
+	lea     ($ffff0000),a0
+	move.w  #$3fff,d7
+@ram_clear:
+	move.w	#0,(a0)+
+	dbf     d7,@ram_clear
+@system_initialized:
+	move.w  #$100,z80_bus_request			; Send the Z80 a bus request.
+	move.w  #$100,z80_reset
+@z80_wait:
+	btst	#0,z80_bus_request
+	bne.s	@z80_wait
+	lea		(@z80_code),a0
+	lea		(z80_ram),a1
+	move.w  #@z80_end-@z80_code-1,d0
+@z80_loop:
+	move.b  (a0)+,(a1)+
+	dbf		d0,@z80_loop
+	move.w	#0,z80_reset
+	move.w	#0,z80_bus_request
+	move.w	#$100,z80_reset
+	bra.w	main
+
+@z80_code:
+	dc.w    $AF01, $D91F, $1127, $0021, $2600, $F977 
+	dc.w    $EDB0, $DDE1, $FDE1, $ED47, $ED4F, $D1E1
+	dc.w    $F108, $D9C1, $D1E1, $F1F9, $F3ED, $5636
+	dc.w    $E9E9
+@z80_end:

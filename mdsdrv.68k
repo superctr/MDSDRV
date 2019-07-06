@@ -1,0 +1,780 @@
+;======================================================================
+; MDSDRV - mega drive sound driver
+; (C) 2019 ian karlsson
+;======================================================================
+
+;======================================================================
+; ABI call
+;----------------------------------------------------------------------
+mds_top
+	bsr.w	mds_init
+	bsr.w	mds_update
+	bsr.w	mds_request
+	bsr.w	mds_ch_dummy
+	bsr.w	mds_ch_dummy
+	bsr.w	mds_ch_dummy
+	bsr.w	mds_ch_dummy
+	bsr.w	mds_ch_dummy
+
+;======================================================================
+; ABI version string
+;----------------------------------------------------------------------
+version_str
+	dc.b	"MDSDRV190525V0.0"
+
+;======================================================================
+; initialize sound driver
+;----------------------------------------------------------------------
+; INPUT
+;	a0 - pointer to work area
+;   a1 - pointer to request base table (sdtop)
+; TRASHES
+;   a1, d0-d1
+mds_init
+@zero		equr d0
+
+	move.l	a1,w_sdtop(work)				;set sdtop
+	lea		mds_psg_init(pc),a1
+	clr.l	@zero
+	move.l	@zero,w_request(work)			;clear request
+	move.l	@zero,2+w_request(work)
+	move.l	@zero,w_tempo(work)				;clear tempo
+	move.l	@zero,2+w_tempo(work)
+	move.l	@zero,w_counter(work)			;clear counter
+	move.l	@zero,2+w_counter(work)
+	move.l	@zero,w_volume(work)			;clear trk volume
+	move.l	@zero,2+w_volume(work)
+	move.l	@zero,w_tmask(work)				;clear trk mask
+	move.l	@zero,2+w_tmask(work)
+	move.l	@zero,w_chmask(work)			;clear chmask
+	move.l	@zero,2+w_chmask(work)
+	move.w	@zero,w_fm3_mask				;clear fm3mask
+	move.w	#128,w_gtempo(work)				;initial tempo
+	lea		w_track(work),twork				;track addr
+	move.w	#TCOUNT-1,d1
+@next_track
+	move.b	@zero,t_note_flag(twork)		;clear flag
+	move.l	a1,t_psg_eg_addr(twork)
+	move.w	#$000f,t_psg_eg_pos(twork)
+	move.b	#RCOUNT<<1,t_request_id(twork)	;channel is free
+
+	lea		TSIZE(twork),twork				;next track
+	dbra	d1,@next_track
+
+mds_halt
+	stop_z80
+	lea		sound_psg,a1
+	move.b	#$9f,(a1)						;mute psg
+	move.b	#$bf,(a1)
+	move.b	#$df,(a1)
+	move.b	#$ff,(a1)
+
+	lea		sound_fm_a0,a1
+@next_part
+	move.b	#$80,d1							; release rate
+@rr_loop
+	btst.b	#7,sound_fm_a0
+	bne.s	@rr_loop
+	move.b	d1,(a1)					;17 cycle wait after writing reg#
+	nop
+	nop
+	nop
+	nop
+	nop
+	move.b	#$0f,1(a1)
+	addq.b	#1,d1							; next operator
+	cmpi.b	#$90,d1
+	bcs.s	@rr_loop
+	addq.w	#2,a1
+	cmpa.l	#sound_fm_a1+2,a1
+	bne.s	@next_part
+
+	subq.w	#4,a1
+	move.b	#$00,d1							; key off
+@keyoff_loop
+	btst.b	#7,sound_fm_a0
+	bne.s	@keyoff_loop
+	move.b	#$28,(a1)				;17 cycle wait after writing reg#
+	nop
+	nop
+	nop
+	nop
+	nop
+	move.b	d1,1(a1)
+	addq.b	#1,d1							; next channel
+	cmpi.b	#$07,d1
+	beq.s	@keyoff_done
+	cmpi.b	#$03,d1							; ch4?
+	bne.s	@keyoff_loop
+	addq.b	#1,d1
+	bra.s	@keyoff_loop
+
+@keyoff_done
+	start_z80
+	rts
+
+;======================================================================
+; update sound driver
+;----------------------------------------------------------------------
+; INPUT
+;	a0 - pointer to work area
+mds_update
+@reqdata	equr	d0
+@counter	equr	d6
+
+	clr.w	rnum
+	lea		w_track(work),twork
+
+@next_request
+	move.w	w_request(work,rnum),@reqdata
+	btst	#15,@reqdata					;request flag set
+	beq.s	@not_triggered
+	bsr.w	mds_start_song
+
+@not_triggered
+	move.w	w_tmask(work,rnum),@reqdata
+	beq.s	@request_done
+	move.w	w_counter(work,rnum),@counter	;apply tempo
+	add.w	w_tempo(work,rnum),@counter
+	addq.w	#1,@counter
+	move.w	@counter,w_counter(work,rnum)
+
+@sequence_tick
+	sub.w	w_gtempo(work),@counter			;sequence tick
+	bcs.s	@request_done
+	move.w	@counter,w_counter(work,rnum)
+	pea		@sequence_tick(pc)
+	bra.w	mds_update_seq
+
+@request_done
+	addq	#2,rnum
+	cmpi.w	#RCOUNT<<1,rnum
+	bne		@next_request
+
+;----------------------------------------------------------------------
+; update voices
+;----------------------------------------------------------------------
+mds_update_voices
+@updtab		equr	tmpa2
+	stop_z80
+
+	lea		w_track(work),twork				; first track's addr
+	move.w	#TCOUNT-1,tnum
+
+@next_track
+	move.w	t_note_flag(twork),flag
+
+	move.b	t_channel_id(twork),chnid		;check priority
+	move.b	t_request_id(twork),d0
+	lea		w_chmask(work),tmpa0
+	rept	RCOUNT
+		move.w	(tmpa0)+,d1
+		btst	chnid,d1
+		bne.s	@prio_known
+		subq.b	#2,d0						;next request
+	endr
+@prio_known
+	bclr	#nf+nf_enabled,flag
+	tst.b	d0
+	bne		@no_priority
+	bset	#nf+nf_enabled,flag
+	
+	bra.s	@track_done
+@no_priority
+	ori.w	#nm_restore<<nf,flag
+@track_done
+	move.w	flag,t_note_flag(twork)
+	lea		TSIZE(twork),twork				; next track
+	dbra	tnum,@next_track
+	swap	tnum							; restore tempo counter
+	rts
+	
+	start_z80
+	
+	rts
+
+;======================================================================
+; Request track
+;----------------------------------------------------------------------
+; INPUT
+;	a0 - pointer to work area
+;	d0 - request track
+;	d1 - request priority, range 0-3.
+; TRASHES
+;	d0,d1
+mds_request
+	bset	#15,d0
+	andi.w	#3,d1
+	lsl.w	d1
+	move.w	d0, w_request(a0,d1)
+	rts
+
+;======================================================================
+; stops song playback
+;----------------------------------------------------------------------
+; INPUT
+;   twork - track's working area
+; OUTPUT
+;   -
+; TRASHES
+;	d1,d6
+mds_stop_song
+	lea		w_track(work),twork
+	move.w	#TCOUNT-1,tnum
+	move.w	w_tmask(work,rnum),tmask
+
+@next_track
+	btst	tnum,tmask						;track id
+	beq.w	@skip_track
+	ori.b	#nm_stop,t_note_flag(twork)
+	bset	#cf_inhibit,t_channel_flag(twork)
+	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
+
+@skip_track
+	lea		TSIZE(twork),twork				;next track
+	dbra	tnum,@next_track
+	clr.w	w_tmask(work,rnum)				;clear trackmask
+	clr.w	w_chmask(work,rnum)				;clear chmask
+@exit
+	rts
+
+;======================================================================
+; starts song playback
+;----------------------------------------------------------------------
+; INPUT
+;   twork - track's working area
+;   d0 - request #
+; OUTPUT
+;   -
+; TRASHES
+;	d0-d3, tmpa0, tmpa1
+mds_start_song
+@reqdata	equr	d0						;request id
+@tempo		equr	d1						;global tempo
+@zero		equr	d1
+
+	bclr	#15,@reqdata
+	move.w	@reqdata,w_request(work,rnum)	;clear request flag
+	bsr.w	mds_stop_song					;stop already playing song
+
+	subq.w	#1,@reqdata						;subtract sound codes
+	bmi		@exit							;0 to stop a track
+
+	lea		mds_psg_init(pc),tmpa1
+
+	move.w	w_gtempo(work),@tempo
+	subq.w	#1,@tempo
+	move.w	@tempo,w_tempo(work,rnum)		;initial tempo
+	clr.w	@zero
+	move.w	@zero,w_counter(work,rnum)
+
+	lsl.w	#2,@reqdata						;request table
+	lea		w_sdtop(work,@reqdata),tmpa0	;location of song header
+
+	move.l	tmpa0,tbase
+	adda.w	(tmpa0)+,tbase					;song base offset
+	move.w	(tmpa0)+,w_tmask(work,rnum)		;track mask
+	lea		w_track(work),twork
+	move.w	#TCOUNT-1,tnum
+	move.w	w_tmask(work,rnum),tmask
+
+@next_track
+	btst	tnum,tmask
+	beq.w	@skip_track
+
+	move.l	tbase,t_base_addr(twork)
+	move.w	(tmpa0)+,@reqdata				;channel id
+	or.w	rnum,@reqdata
+	move.w	@reqdata,t_channel_id(twork)
+
+	lsr.w	#8,@reqdata
+	bset	@reqdata,w_chmask(work,rnum)
+	cmp.w	#ct_psg,@reqdata
+	bcs		@not_psg
+	move.l	tmpa1,t_psg_eg_addr(twork)		;psg eg initialize
+	move.w	#$000f,t_psg_eg_pos(twork)
+
+@not_psg
+	move.w	(tmpa0)+,t_position(twork)		;start position
+	move.w	@zero,t_drum_mode(twork)
+	move.w	@zero,t_stack_pos(twork)		;stack_pos & counter
+	move.w	#$0c0c,t_rest_time(twork)		;default time
+	and.b	#nm_reset,t_note_flag(twork)
+	move.b	@zero,t_channel_flag(twork)
+	move.b	@zero,t_stack_pos(twork)
+
+@skip_track
+	lea		TSIZE(twork),twork				;next track
+	dbra	tnum,@next_track
+@exit
+	rts
+
+;======================================================================
+; update track sequences
+;----------------------------------------------------------------------
+; INPUT
+;   twork - track's working area
+; OUTPUT
+;   -
+; TRASHES
+;	?
+mds_update_seq
+@trackpos	equr	d0
+@cmd		equr	d1
+@cmdlen		equr	d2
+@tempreg	equr	d3
+
+	lea		w_track(work),twork				; first track's addr
+	swap	tnum							; backup tempo counter
+	move.w	#TCOUNT-1,tnum
+	move.w	w_tmask(work,rnum),tmask
+
+@next_track
+	btst	tnum,tmask						; track enabled?
+	beq.s	@command_done
+
+	subq.b	#1,t_counter(twork)
+	bcs.s	@read_command					; counter overflow
+
+@command_done
+	lea		TSIZE(twork),twork				; next track
+	dbra	tnum,@next_track
+	swap	tnum							; restore tempo counter
+	rts
+
+;----------------------------------------------------------------------
+; command read loop
+;----------------------------------------------------------------------
+@read_command
+	move.l	t_base_addr(twork),tbase
+	move.w	t_position(twork),@trackpos
+	moveq	#1,@cmdlen
+
+@next_command
+	add.w	@cmdlen,@trackpos
+	move.b	-1(tbase,@trackpos),@cmd
+	bmi.s	@cmd_80
+
+@cmd_rest
+	bset	#nf_key_off,t_note_flag(twork)
+	move.b	@cmd,t_rest_time(twork)			;00-7f - rest
+	move.b	@cmd,t_counter(twork)
+	move.w	@trackpos,t_position(twork)
+	bra.s	@command_done
+
+@cmd_80
+	sub.b	#$81,@cmd						;81 - tie
+	beq.s	@cmd_tie
+	addq.b	#1,@cmd
+	beq.s	@cmd_rest2						;80 - rest (alternate)
+	cmp.b	#$60,@cmd
+	bcc.s	@cmd_other
+
+	subq.b	#2,@cmd							;82-df - note
+	move.b	@cmd,t_note(twork)
+	bset	#nf_key_on,t_note_flag(twork)
+	btst	#nf_slur,t_note_flag(twork)
+	beq.s	@cmd_tie
+	bset	#nf_key_off,t_note_flag(twork)
+@cmd_tie
+	lea		t_note_time(twork),tmpa0
+@cmd_read_delta
+	move.b	0(tbase,@trackpos),@cmd			;read next command
+	bmi		@cmd_previous_delta
+
+@cmd_new_delta
+	move.b	@cmd,t_counter(twork)
+	move.b	@cmd,(tmpa0)
+	addq.w	#1,@trackpos
+	move.w	@trackpos,t_position(twork)
+	bra.s	@command_done
+
+@cmd_previous_delta
+	move.b	(tmpa0),t_counter(twork)
+	move.w	@trackpos,t_position(twork)
+	bra.s	@command_done
+
+@cmd_rest2
+	bset	#nf_key_off,t_note_flag(twork)	;80 - rest 2
+	move.b	(tmpa0),t_counter(twork)
+	move.w	@trackpos,t_position(twork)
+	bra.w	@command_done
+
+@cmd_other
+	andi.w	#$1f,@cmd
+	move.b	@cmd_length_table(pc,@cmd),@cmdlen
+	lsl.b	#2,@cmd
+	pea		@next_command(pc)
+	jmp		@cmd_table(pc,@cmd)
+
+;----------------------------------------------------------------------
+; command table
+;----------------------------------------------------------------------
+@cmd_length_table
+	dc.b	1,2,2,2, 2,2,2,2, 2,2,2,2, 2,2,2,2		;e0
+	dc.b	2,2,0,0, 0,0,0,0, 2,1,2,1, 1,2,2,0		;f0
+@cmd_table
+	bra.w	@cmd_slr						;e0 slur
+	bra.w	@cmd_ins						;e1 instrument
+	bra.w	@cmd_vol						;e2 volume
+	bra.w	@cmd_volm						;e3 volume change
+	bra.w	@cmd_trs						;e4 transpose
+	bra.w	@cmd_trsm						;e5 transpose change
+	bra.w	@cmd_dtn						;e6 detune
+	bra.w	@cmd_pta						;e7 portamento
+	bra.w	@cmd_peg						;e8 pitch envelope
+	bra.w	@cmd_lfo						;e9 lfo sensitivity
+	bra.w	@cmd_pan						;ea panning
+	bra.w	@cmd_flg						;eb channel flags
+	bra.w	@cmd_pcm						;ec pcm instrument
+	bra.w	@cmd_lfod						;ed lfo delay
+	bra.w	@cmd_fmreg						;ee fm register write
+	bra.w	@cmd_fmcreg						;ef fm channel reg write
+	bra.w	@cmd_fmtl						;f0 fm tl write
+	bra.w	@cmd_fmtlm						;f1 fm tl change
+	bra.w	@cmd_finish						;f2
+	bra.w	@cmd_finish						;f3
+	bra.w	@cmd_finish						;f4
+	bra.w	@cmd_finish						;f5
+	bra.w	@cmd_finish						;f6
+	bra.w	@cmd_finish						;f7
+	bra.w	@cmd_tempo						;f8 tempo
+	bra.w	@cmd_lp							;f9 loop
+	bra.w	@cmd_lpf						;fa loop finish
+	bra.w	@cmd_lpb						;fb loop break
+	bra.w	@cmd_lpbl						;fc loop break 2
+	bra.w	@cmd_pat						;fd subroutine
+	bra.w	@cmd_dmode						;fe drum mode
+@cmd_finish									;ff finish
+	move.b	t_stack_pos(twork),@cmd
+	bne		@cmd_return
+
+	ori.b	#nf_silence|nf_key_off,t_note_flag(twork)
+	bset	#cf_inhibit,t_channel_flag(twork)
+	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
+	bclr	tnum,w_tmask(work,rnum)			;disable track
+	move.b	t_channel_id(twork),@cmd
+	bclr	@cmd,w_chmask(work,rnum)		;deallocate channel
+	addq.w	#4,sp							;break out of command
+	move.w	@trackpos,t_position(twork)
+	bra.w	@command_done
+
+@cmd_return
+	subq.b	#1,@cmd
+	move.b	@cmd,t_stack_pos(twork)
+	lsl.b	#1,@cmd
+	move.w	t_stack(twork,@cmd),@trackpos	; pop return address
+	rts
+
+@cmd_slr
+	bset	#nf_slur,t_note_flag(twork)
+@cmd_dummy
+	rts
+
+;----------------------------------------------------------------------
+; CAUTION: instrument data must fit within 32k of w_sdtop address
+;  change "lea w_sdtop(work,@cmd),tmpa0" with "lea w_sdtop(work),tmpa0"
+;  then "add @cmd,tmpa0"
+;----------------------------------------------------------------------
+@cmd_ins
+	move.b	0(tbase,@trackpos),@cmd
+	move.b	@cmd,t_ins(twork)
+	bset	#nf_ins,t_note_flag(twork)
+	lsl.w	#1,@cmd
+	move.w	0(tbase,@cmd),@cmd				; instr address
+	lea		w_sdtop(work,@cmd),tmpa0		; ptr. to ins data
+	move.b	t_channel_id(twork),@cmd
+	cmpi.b	#6,@cmd							; fm or psg
+	bcc.s	@cmd_ins_psg
+	lea		24(tmpa0),tmpa0					; fm tl offset
+	move.l	(tmpa0)+,t_fm_tl(twork)
+	move.b	(tmpa0),t_fm_alg(twork)
+	rts
+
+@cmd_ins_psg
+	move.w	tmpa0,t_psg_eg_addr(twork)
+	move.w	#$000f,t_psg_eg_pos(twork)
+	rts
+
+@cmd_vol
+	move.b	0(tbase,@trackpos),t_vol(twork)
+	bset	#nf_vol,t_note_flag(twork)
+	rts
+@cmd_volm
+	move.b	0(tbase,@trackpos),@cmd
+	add.b	@cmd,t_vol(twork)
+	bset	#nf_vol,t_note_flag(twork)
+	rts
+
+@cmd_trs
+	move.b	0(tbase,@trackpos),t_trs(twork)
+	rts
+@cmd_trsm
+	move.b	0(tbase,@trackpos),@cmd
+	add.b	@cmd,t_trs(twork)
+	rts
+
+@cmd_dtn
+	move.b	0(tbase,@trackpos),t_dtn(twork)
+	rts
+
+@cmd_pta
+	move.b	0(tbase,@trackpos),t_pta(twork)
+	rts
+
+@cmd_peg
+	clr.w	@cmd
+	move.w	@cmd,t_peg_mod(twork)
+	move.w	@cmd,t_peg_delay(twork)
+	move.b	0(tbase,@trackpos),@cmd
+	beq.s	@cmd_peg_off
+	lsl.w	#1,@cmd
+	move.w	0(tbase,@cmd),t_peg_addr(twork)
+	rts
+
+@cmd_peg_off
+	move.w	@cmd,t_peg_addr(twork)
+	rts
+
+@cmd_lfo
+	move.b	t_fm_pan_lfo(twork),@cmd
+	andi.b	#$3f,@cmd
+	or.b	0(tbase,@trackpos),@cmd
+	move.b	@cmd,t_fm_pan_lfo(twork)
+	bset	#nf_pan_lfo,t_note_flag(twork)
+	rts
+
+@cmd_pan
+	move.b	t_fm_pan_lfo(twork),@cmd
+	andi.b	#$c0,@cmd
+	or.b	0(tbase,@trackpos),@cmd
+	move.b	@cmd,t_fm_pan_lfo(twork)
+	bset	#nf_pan_lfo,t_note_flag(twork)
+	rts
+
+@cmd_flg
+	move.b	0(tbase,@trackpos),t_channel_flag(twork)
+	rts
+
+@cmd_pcm
+	bset	#cf_pcm_control,t_channel_flag(twork)
+	rts
+
+@cmd_lfod
+	move.b	0(tbase,@trackpos),t_lfo_delay(twork)
+	rts
+
+@cmd_fmreg
+	rts
+
+@cmd_fmcreg
+	rts
+
+@cmd_fmtl
+	rts
+
+@cmd_fmtlm
+	rts
+
+@cmd_tempo
+	move.b	0(tbase,@trackpos),0(work,rnum)
+	rts
+
+@cmd_lp
+	rts
+
+@cmd_lpf
+	rts
+
+@cmd_lpb
+	rts
+
+@cmd_lpbl
+	rts
+
+@cmd_pat
+	rts
+
+@cmd_dmode
+	clr.w	@cmd
+	move.b	0(tbase,@trackpos),@cmd
+	lsl.w	#1,@cmd
+	lea		w_sdtop(work,@cmd),tmpa0
+	move.w	tmpa0,t_peg_addr(twork)
+	rts
+
+;======================================================================
+; update track envelopes and voices
+;----------------------------------------------------------------------
+; INPUT
+;   twork - track's working area
+; OUTPUT
+;   -
+; TRASHES
+;	?
+mds_update_voice
+	rts
+
+;======================================================================
+; check channel priority
+;----------------------------------------------------------------------
+; INPUT
+;   d0 - channel id
+; OUTPUT
+;   d0 - request # with highest priority
+; TRASHES
+;	tmpa0, d1, d2
+mds_check_priority
+	clr.w	d1
+	bset	d0,d1		; set channel bit
+	clr.w	d0
+	lea		w_chmask(work),tmpa0
+	rept	RCOUNT
+		move.w	(tmpa0)+,d2
+		btst	d1,d2
+		bne		@end
+		addq.b	#2,d0						;next request
+	endr
+@end
+	rts
+
+;======================================================================
+; get FM pitch
+;----------------------------------------------------------------------
+; INPUT
+;   d0 - key code + fraction
+; OUTPUT
+;   d0 - pitch value
+; TRASHES
+;   tmpa0, d1, d2
+mds_get_fm_pitch
+	lsl.l	#8,d0
+	move.w	d0,d1							; upper bits of keycode
+	swap	d0
+	lea		mds_octave_table(pc),tmpa0
+	move.b	0(tmpa0,d0),d2					; octave
+	move.b	mds_note_table-mds_octave_table(tmpa0,d0),d0
+	add.b	t_ins_trs(twork),d0				;freq tab displacement
+	lea		@fm_freq_tab(pc,d0),tmpa0
+	move.w	2(tmpa0),d0
+	sub.w	(tmpa0),d0
+	mulu	d1,d0							;interpolate
+	swap	d0
+	add.w	(tmpa0),d0
+	swap	d2
+	clr.w	d2
+	lsr.l	#5,d2
+	add.w	d2,d0							;octave added
+	rts
+@fm_freq_tab
+	dc.w 161,171,181,191,203,215,228,241,255,271,287,304		; 0-11
+	dc.w 322,341,361,383,406,430,455,482,511,541,574,608		; 12-23
+	dc.w 644,682,723,766,811,859,910,965,1022,1083,1147,1215	; 24-35
+	dc.w 1288,1364,1445,1531,1622,1719,1821,1929,2044			; 36-45
+
+;======================================================================
+; get PSG pitch
+;----------------------------------------------------------------------
+; INPUT
+;   d0 - key code + fraction
+; OUTPUT
+;   d0 - pitch value
+; TRASHES
+;   tmpa0, d1, d2
+mds_get_psg_pitch
+	lsl.l	#8,d0
+	move.w	d0,d1							; upper bits of keycode
+	swap	d0
+	lea		mds_octave_table(pc),tmpa0
+	move.b	0(tmpa0,d0),d2					; octave
+	move.b	mds_note_table-mds_octave_table(tmpa0,d0),d0
+	lea		@psg_freq_tab(pc,d0),tmpa0
+	move.w	2(tmpa0),d0
+	sub.w	(tmpa0),d0
+	mulu	d1,d0							;interpolate
+	swap	d0
+	add.w	(tmpa0),d0
+	lsr.l	d2,d0							;octave shifted
+	rts
+@psg_freq_tab
+	dc.w	851,803,758,715,675,637,601,568,536,506,477,450,425
+
+;======================================================================
+; Note/octave division table
+;----------------------------------------------------------------------
+; note values are multiplied by 2 since they are likely going to be
+; used as LUT indices
+mds_octave_table
+	dc.b	 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+	dc.b	 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+	dc.b	 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2
+	dc.b	 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3
+	dc.b	 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4
+	dc.b	 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5
+	dc.b	 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+	dc.b	 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7
+mds_note_table
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
+
+;======================================================================
+; PSG envelope initialize
+;----------------------------------------------------------------------
+mds_psg_init
+	dc.b	$10,$01,$1f,$00
+
+mds_ch_offset
+@f	equ	0	;dummy
+@p	equ mds_ch_psg-mds_ch_update	;dummy
+@d	equ mds_ch_dummy-mds_ch_update	;dummy
+	dc.w	@f,@f,@f,@f,@f,@f,@p,@p,@p,@p,@d,@d,@d,@d,@d,@d
+
+mds_ch_update	bra.w	mds_fm_update
+mds_ch_key_on	bra.w	mds_fm_key_on
+mds_ch_key_off	bra.w	mds_fm_key_off
+mds_ch_ins		bra.w	mds_fm_ins
+mds_ch_vol		bra.w	mds_fm_vol
+mds_ch_pan_lfo	bra.w	mds_fm_pan_lfo
+mds_ch_psg
+	bra.w	mds_psg_update
+	bra.w	mds_psg_key_on
+	bra.w	mds_psg_key_off
+	bra.w	mds_psg_ins
+	bra.w	mds_psg_vol
+mds_ch_dummy
+	rept	6
+	rts
+	nop
+	endr
+
+;======================================================================
+; FM patch upload
+;----------------------------------------------------------------------
+mds_fm_upload
+
+	rts
+
+;======================================================================
+; FM update
+;----------------------------------------------------------------------
+mds_fm_update
+mds_fm_key_on
+mds_fm_key_off
+mds_fm_ins
+mds_fm_vol
+mds_fm_pan_lfo
+	rts
+
+mds_psg_update
+mds_psg_key_on
+mds_psg_key_off
+mds_psg_ins
+mds_psg_vol
+	rts
+

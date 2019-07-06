@@ -1,0 +1,5 @@
+; builds MDSDRV as binary blob
+	include "mddef.inc"
+	include "mdsdrv.inc"
+	include "mdsdrv.68k"
+
