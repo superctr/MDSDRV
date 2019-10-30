@@ -23,45 +23,77 @@ Struct member definitions will be given like this:
 .MDS binary file format
 -----------------------
 
-The .MDS format is based on RIFF, using chunks to store data.
-If the chunk is non-even, an extra padding byte is inserted. This does
-not count into the chunk size.
+The .MDS format is based on RIFF (Resource interchangable file format);
+various data types are stored in named chunks.
 
-### File header
+If the size of the chunk is non-even, an extra padding byte is
+inserted. This does not count into the chunk size. Though if a padding
+byte is inserted between two subchunks, they will count into the size
+of the parent chunk.
+
+### .MDS File header (version 0)
+This is a standard RIFF header.
+
 	+0 (ub) [0..3] - file_id
-		"RIFF"
+		"RIFF" (standard RIFF format)
 	+4 (ul) - file_size
 		Size of the file - 8. (little endian)
 	+8 (ub) [0..3] - file_format
-		"MDS0"
+		"MDS0" (MDS file version 0)
+	+12 (ub) [0..file_size-4] - file_data
+		Contains the chunks listed below
 
-### Sequence data
+### Sequence data chunk
+This contains MDSDRV sequence data. This data is copied almost straight
+into the ROM. The song data table entries may be stored as zeroes here.
+In the ROM, they should have been changed to point to the locations of
+the respective data blocks.
+
 	+0 (ub) [0..3] - chunk_id
-		"data"
+		"seq "
 	+4 (ul) - chunk_size
-		Size of chunk - 8 (little endian)
-	+8 [0..chunk_size] - chunk_data
-		Sequence header and sequence data (see below)
+		Size of the chunk_data (little endian)
+	+8 (ub) [0..chunk_size] - chunk_data
+		Sequence header and sequence data
 
-### Global data block definition
+### Data block list chunk
+This is a RIFF LIST chunk that contains the data block list. List items
+(subchunks) can be global data blocks ("glob") or PCM data blocks
+("wave").
+
+	+0 (ub) [0..3] - chunk_id
+		"LIST" (standard RIFF list)
+	+4 (ul) - chunk_size
+		Size of the chunk data (including all subchunks) (little endian)
+	+8 (ub) [0..3] - list_type
+		"dblk"
+	+12 (ub) [0..chunk_size-4] - subchunk_data
+		Contains any number of subchunks listed below
+
+#### Global data block subchunk definition
 This defines an instrument or envelope that is to be inserted into
 the global data bank during .MDS to ROM compilation.
 
-	+0 (ub) [0..3] - chunk_id
-		"gdat"
-	+4 (ul) - chunk_size
+	+0 (ub) [0..3] - subchunk_id
+		"glob"
+	+4 (ul) - subchunk_size
 		Size of chunk - 8 (little endian)
 	+8 (uw) - data_type
 		Data type (little endian)
 	+10 (uw) - data_id
 		Data ID (little endian)
-	+12 [0..chunk_size-4] - chunk_data
+	+12 (ub) [0..chunk_size-4] - subchunk_data
 		Data
 
-#### Compilation process
+##### Compilation process
 When the address of each data block in ROM is finalized, a (uw) pointer
 in the sequence data at `tbase + data_id*2` should be replaced with the
 address of the data block relative from `sdtop`.
+
+#### PCM data block subchunk definition
+This defines a PCM sample with associated metadata.
+
+	TODO: define
 
 Sound data header format
 ------------------------
