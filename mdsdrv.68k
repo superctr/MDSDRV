@@ -20,7 +20,8 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV190525V0.0"
+	dc.b	"          191110"
+;	dc.b	"MDSDRV190525V0.0"
 
 ;======================================================================
 ; initialize sound driver
@@ -178,7 +179,7 @@ mds_update_voices
 	tst.b	d0
 	bne		@no_priority
 	bset	#nf+nf_enabled,flag
-	
+
 	bra.s	@track_done
 @no_priority
 	ori.w	#nm_restore<<nf,flag
@@ -188,9 +189,9 @@ mds_update_voices
 	dbra	tnum,@next_track
 	swap	tnum							; restore tempo counter
 	rts
-	
+
 	start_z80
-	
+
 	rts
 
 ;======================================================================
@@ -206,7 +207,7 @@ mds_request
 	bset	#15,d0
 	andi.w	#3,d1
 	lsl.w	d1
-	move.w	d0, w_request(a0,d1)
+	move.w	d0,w_request(a0,d1)
 	rts
 
 ;======================================================================
@@ -269,7 +270,7 @@ mds_start_song
 	move.w	@zero,w_counter(work,rnum)
 
 	lsl.w	#2,@reqdata						;request table
-	lea		w_sdtop(work,@reqdata),tmpa0	;location of song header
+	move.l	w_sdtop(work,@reqdata),tmpa0	;location of song header
 
 	move.l	tmpa0,tbase
 	adda.w	(tmpa0)+,tbase					;song base offset
@@ -411,8 +412,8 @@ mds_update_seq
 ; command table
 ;----------------------------------------------------------------------
 @cmd_length_table
-	dc.b	1,2,2,2, 2,2,2,2, 2,2,2,2, 2,2,2,2		;e0
-	dc.b	2,2,0,0, 0,0,0,0, 2,1,2,1, 1,2,2,0		;f0
+	dc.b	1,2,2,2, 2,2,2,2, 2,2,2,2, 2,3,2,2		;e0
+	dc.b	0,0,0,0, 0,0,0,0, 3,2,1,2, 2,3,2,0		;f0
 @cmd_table
 	bra.w	@cmd_slr						;e0 slur
 	bra.w	@cmd_ins						;e1 instrument
@@ -423,28 +424,28 @@ mds_update_seq
 	bra.w	@cmd_dtn						;e6 detune
 	bra.w	@cmd_pta						;e7 portamento
 	bra.w	@cmd_peg						;e8 pitch envelope
-	bra.w	@cmd_lfo						;e9 lfo sensitivity
-	bra.w	@cmd_pan						;ea panning
-	bra.w	@cmd_flg						;eb channel flags
-	bra.w	@cmd_pcm						;ec pcm instrument
-	bra.w	@cmd_lfod						;ed lfo delay
-	bra.w	@cmd_fmreg						;ee fm register write
-	bra.w	@cmd_fmcreg						;ef fm channel reg write
-	bra.w	@cmd_fmtl						;f0 fm tl write
-	bra.w	@cmd_fmtlm						;f1 fm tl change
+	bra.w	@cmd_pan						;e9 panning
+	bra.w	@cmd_lfo						;ea lfo sensitivity
+	bra.w	@cmd_lfod						;eb lfo delay
+	bra.w	@cmd_flg						;ec channel flags
+	bra.w	@cmd_fmcreg						;ed fm channel reg write
+	bra.w	@cmd_fmtl						;ee fm tl write
+	bra.w	@cmd_fmtlm						;ef fm tl change
+	bra.w	@cmd_finish						;f0
+	bra.w	@cmd_finish						;f1
 	bra.w	@cmd_finish						;f2
 	bra.w	@cmd_finish						;f3
 	bra.w	@cmd_finish						;f4
 	bra.w	@cmd_finish						;f5
 	bra.w	@cmd_finish						;f6
 	bra.w	@cmd_finish						;f7
-	bra.w	@cmd_tempo						;f8 tempo
-	bra.w	@cmd_lp							;f9 loop
-	bra.w	@cmd_lpf						;fa loop finish
-	bra.w	@cmd_lpb						;fb loop break
-	bra.w	@cmd_lpbl						;fc loop break 2
-	bra.w	@cmd_pat						;fd subroutine
-	bra.w	@cmd_dmode						;fe drum mode
+	bra.w	@cmd_fmreg						;f8 fm register write
+	bra.w	@cmd_tempo						;f9 tempo
+	bra.w	@cmd_lp							;fa loop
+	bra.w	@cmd_lpf						;fb loop finish
+	bra.w	@cmd_lpb						;fc loop break
+	bra.w	@cmd_lpbl						;fd loop break 2
+	bra.w	@cmd_pat						;fe subroutine
 @cmd_finish									;ff finish
 	move.b	t_stack_pos(twork),@cmd
 	bne		@cmd_return
@@ -464,13 +465,18 @@ mds_update_seq
 	move.b	@cmd,t_stack_pos(twork)
 	lsl.b	#1,@cmd
 	move.w	t_stack(twork,@cmd),@trackpos	; pop return address
-	rts
-
-@cmd_slr
-	bset	#nf_slur,t_note_flag(twork)
 @cmd_dummy
 	rts
 
+;----------------------------------------------------------------------
+; slr - set note slur
+;----------------------------------------------------------------------
+@cmd_slr
+	bset	#nf_slur,t_note_flag(twork)
+	rts
+
+;----------------------------------------------------------------------
+; ins - set instrument (or PSG envelope)
 ;----------------------------------------------------------------------
 ; CAUTION: instrument data must fit within 32k of w_sdtop address
 ;  change "lea w_sdtop(work,@cmd),tmpa0" with "lea w_sdtop(work),tmpa0"
@@ -496,6 +502,9 @@ mds_update_seq
 	move.w	#$000f,t_psg_eg_pos(twork)
 	rts
 
+;----------------------------------------------------------------------
+; vol - set volume
+;----------------------------------------------------------------------
 @cmd_vol
 	move.b	0(tbase,@trackpos),t_vol(twork)
 	bset	#nf_vol,t_note_flag(twork)
@@ -506,6 +515,9 @@ mds_update_seq
 	bset	#nf_vol,t_note_flag(twork)
 	rts
 
+;----------------------------------------------------------------------
+; vol - set transpose
+;----------------------------------------------------------------------
 @cmd_trs
 	move.b	0(tbase,@trackpos),t_trs(twork)
 	rts
@@ -514,14 +526,23 @@ mds_update_seq
 	add.b	@cmd,t_trs(twork)
 	rts
 
+;----------------------------------------------------------------------
+; dtn - set detune
+;----------------------------------------------------------------------
 @cmd_dtn
 	move.b	0(tbase,@trackpos),t_dtn(twork)
 	rts
 
+;----------------------------------------------------------------------
+; pta - set portamento
+;----------------------------------------------------------------------
 @cmd_pta
 	move.b	0(tbase,@trackpos),t_pta(twork)
 	rts
 
+;----------------------------------------------------------------------
+; peg - set pitch envelope
+;----------------------------------------------------------------------
 @cmd_peg
 	clr.w	@cmd
 	move.w	@cmd,t_peg_mod(twork)
@@ -531,19 +552,16 @@ mds_update_seq
 	lsl.w	#1,@cmd
 	move.w	0(tbase,@cmd),t_peg_addr(twork)
 	rts
-
 @cmd_peg_off
 	move.w	@cmd,t_peg_addr(twork)
 	rts
 
-@cmd_lfo
-	move.b	t_fm_pan_lfo(twork),@cmd
-	andi.b	#$3f,@cmd
-	or.b	0(tbase,@trackpos),@cmd
-	move.b	@cmd,t_fm_pan_lfo(twork)
-	bset	#nf_pan_lfo,t_note_flag(twork)
-	rts
-
+;----------------------------------------------------------------------
+; pan - set panning
+;----------------------------------------------------------------------
+; bit 6 = enable left speaker
+; bit 7 = enable right speaker
+;----------------------------------------------------------------------
 @cmd_pan
 	move.b	t_fm_pan_lfo(twork),@cmd
 	andi.b	#$c0,@cmd
@@ -552,55 +570,107 @@ mds_update_seq
 	bset	#nf_pan_lfo,t_note_flag(twork)
 	rts
 
-@cmd_flg
-	move.b	0(tbase,@trackpos),t_channel_flag(twork)
+;----------------------------------------------------------------------
+; lfo - set lfo depth (channel specific setting)
+;----------------------------------------------------------------------
+; bit 0-1 = FM sensitivity
+; bit 3-5 = AM sensitivity
+;----------------------------------------------------------------------
+@cmd_lfo
+	move.b	t_fm_pan_lfo(twork),@cmd
+	andi.b	#$3f,@cmd
+	or.b	0(tbase,@trackpos),@cmd
+	move.b	@cmd,t_fm_pan_lfo(twork)
+	bset	#nf_pan_lfo,t_note_flag(twork)
 	rts
 
-@cmd_pcm
-	bset	#cf_pcm_control,t_channel_flag(twork)
-	rts
-
+;----------------------------------------------------------------------
+; lfod - set lfo delay
+;----------------------------------------------------------------------
 @cmd_lfod
 	move.b	0(tbase,@trackpos),t_lfo_delay(twork)
 	rts
 
-@cmd_fmreg
+;----------------------------------------------------------------------
+; flg - set channel flags
+;----------------------------------------------------------------------
+; 00-07 - clear flag
+; 08-0F - set flag
+; 80-8F - ch3 mask set
+;----------------------------------------------------------------------
+@cmd_flg
+	clr.w	@cmd
+	move.b	0(tbase,@trackpos),@cmd
+	bmi.s	@cmd_flg_fm3					; bit7 set = fm3 flags
+	btst	#4,@cmd							; bit4 set = set a flag
+	beq.s	@cmd_flg_off
+	bset	@cmd,t_channel_flag(twork)
+	rts
+@cmd_flg_off
+	bclr	@cmd,t_channel_flag(twork)
+	rts
+@cmd_flg_fm3
+	tst.b	@cmd
+	beq.s	@cmd_flg_fm3_off
+	bset	#cf_fm3_enable,t_channel_flag(twork)
+	move.b	@cmd,t_fm3_mask(twork)	; we're reusing MSB of t_base_addr
+	rts
+@cmd_flg_fm3_off
+	bclr	#cf_fm3_enable,t_channel_flag(twork)
 	rts
 
+;----------------------------------------------------------------------
+; fmreg - write to FM chip
+;----------------------------------------------------------------------
+@cmd_fmreg
+	rts
 @cmd_fmcreg
 	rts
 
+;----------------------------------------------------------------------
+; fmtl - set FM TL
+;----------------------------------------------------------------------
 @cmd_fmtl
 	rts
-
 @cmd_fmtlm
 	rts
 
+;----------------------------------------------------------------------
+; tempo - set song tempo
+;----------------------------------------------------------------------
 @cmd_tempo
-	move.b	0(tbase,@trackpos),0(work,rnum)
+	clr.w	@cmd
+	move.b	0(tbase,@trackpos),@cmd
+	move.w	@cmd,w_tempo(work,rnum)
 	rts
 
+;----------------------------------------------------------------------
+; lp - loop start
+;----------------------------------------------------------------------
 @cmd_lp
 	rts
 
+;----------------------------------------------------------------------
+; lpf - loop finish
+;----------------------------------------------------------------------
 @cmd_lpf
 	rts
 
+;----------------------------------------------------------------------
+; lpb - loop break
+;----------------------------------------------------------------------
 @cmd_lpb
 	rts
-
+;----------------------------------------------------------------------
+; lpbl - loop break (long)
+;----------------------------------------------------------------------
 @cmd_lpbl
 	rts
 
+;----------------------------------------------------------------------
+; pat - subroutine
+;----------------------------------------------------------------------
 @cmd_pat
-	rts
-
-@cmd_dmode
-	clr.w	@cmd
-	move.b	0(tbase,@trackpos),@cmd
-	lsl.w	#1,@cmd
-	lea		w_sdtop(work,@cmd),tmpa0
-	move.w	tmpa0,t_peg_addr(twork)
 	rts
 
 ;======================================================================
@@ -778,3 +848,4 @@ mds_psg_ins
 mds_psg_vol
 	rts
 
+; vim: set ft=asm68k sw=4 ts=4 noet:

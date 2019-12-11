@@ -49,8 +49,9 @@ nf_pan_lfo		rs.b	1			; load new pan/lfo
 ; channel flags
 ;======================================================================
 	rsreset
-cf_fm3_mask		rs.b	4			; fm3 operator mask
 cf_fm3_enable	rs.b	1			; fm3 mode enabled
+cf_drum_mode	rs.b	1			; drum mode enabled
+cf_drum_mode_on	rs.b	1			; inside drum mode routine
 cf_psg3_control	rs.b	1			; write fnum to psg3
 cf_pcm_control	rs.b	1			; pcm instrument loaded
 cf_inhibit		rs.b	1			; free
@@ -80,6 +81,7 @@ ct_psgn			rs.b	1			; psg noise
 t_note_flag		rs.b	1			; nf_*
 t_channel_flag	rs.b	1			; cf_*
 t_base_addr		rs.l	1			; sequence base addr
+t_fm3_mask		equ	t_base_addr		; ch3 op mask (using top 8 bits)
 t_position		rs.w	1			; sequence position
 t_drum_mode		rs.w	1			; location of drum table, or 0
 t_stack_pos		rs.b	1
@@ -90,8 +92,8 @@ t_note_time		rs.b	1			; length of last note or tie
 ;----------------------------------------------------------------------
 ; channel variables
 ;----------------------------------------------------------------------
-t_channel_id	rs.b	2			; channel type & id lookup
-t_request_id	equ	t_channel_id+1	; associated request slot
+t_channel_id	rs.b	1			; channel type & id lookup
+t_request_id	rs.b	1			; associated request slot
 t_ins			rs.b	1			; instrument
 t_ins_trs		rs.b	1			; instrument transpose
 t_note			rs.b	1			; key code
@@ -173,7 +175,8 @@ WSIZE			rs.b	0
 	endif
 	inform		0,"sound driver work area is %d bytes",WSIZE
 
-
 break	macro
 		clr.w	$ff0000
 		endm
+
+; vim: set ft=asm68k sw=4 ts=4 noet:
