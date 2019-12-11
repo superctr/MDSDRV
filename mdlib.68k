@@ -8,10 +8,15 @@
 ; TRASHES
 ;   a0-a1, d0-d5
 vdp_init:
-	tst.w	vdp_data
+	;tst.w	vdp_data				;why?
 
 	lea		@reg_table(pc),a0
 	move.l	#vdp_control,a1
+
+@dma_busy
+	move.w	(a1), d0
+	btst	#1, d0
+	bne.s	@dma_busy
 
 @copy_reg_loop
 	move.w	(a0)+, d0

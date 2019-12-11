@@ -22,11 +22,11 @@ bgm00:
 @BASE:
 	rsreset
 @FM_0		rs.b	1
-	dc.w	@FM_0D-sdtop
+	dc.w	@FM_0D-@BASE
 @PSG_0		rs.b	1
-	dc.w	@PSG_0D-sdtop
+	dc.w	@PSG_0D-@BASE
 @PEG_0		rs.b	1
-	dc.w	@PEG_0D-sdtop
+	dc.w	@PEG_0D-@BASE
 
 @FM_0D
 	dc.b	$00,$42,$26,$01		;dt/mul

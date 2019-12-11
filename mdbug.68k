@@ -52,7 +52,8 @@ bug_tab2
 	bug_def	 6, 20, sr
 	bug_def	 6, 5,  pc
 
-t_bug		dc.b	"Dammit, ctr fucked up again!",0
+;t_bug		dc.b	"Dammit, ctr fucked up again!",0
+t_bug		dc.b	"Sluta knulla mig i arselet!!",0
 
 ;                    2345678901234567890123456789
 t_exception dc.b	"",0
@@ -267,7 +268,7 @@ bug_memory_viewer
 	bra.w	@update
 
 @left_pressed
-	subi.w	#$60,a5				; minus $60
+	subi.w	#$c0,a5				; minus $60
 @right_pressed
 	bra.w	@update
 

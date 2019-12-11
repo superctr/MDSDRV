@@ -269,7 +269,8 @@ mds_start_song
 	move.w	@zero,w_counter(work,rnum)
 
 	lsl.w	#2,@reqdata						;request table
-	move.l	w_sdtop(work,@reqdata),tmpa0	;location of song header
+	move.l	w_sdtop(work),tmpa0				;location of song header
+	adda.l	0(tmpa0,@reqdata),tmpa0
 
 	move.l	tmpa0,tbase
 	adda.w	(tmpa0)+,tbase					;song base offset

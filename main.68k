@@ -168,7 +168,7 @@ print_driver_values:
 	p_shift		1,-32
 	p_hex_w		t_note_flag
 	p_shift		0,2
-	p_hex_b		t_channel_flag
+;	p_hex_b		t_channel_flag
 	p_shift		0,4
 	p_hex_b		t_counter
 	p_shift		0,4
