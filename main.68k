@@ -260,3 +260,5 @@ print_instructions
 
 	even
 	include "sdata.asm"
+
+; vim: set ft=asm68k sw=4 ts=4 noet:

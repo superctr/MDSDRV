@@ -295,3 +295,5 @@ i_linef
 	stop $2700
 
 	endif	;def(DEBUG_SCREEN)
+
+; vim: set ft=asm68k sw=4 ts=4 noet:

@@ -1,5 +1,5 @@
 ;======================================================================
-; MDSDRV - mega drive sound driver
+; MDSDRV - mega drive 68k sound driver
 ; (C) 2019 ian karlsson
 ;======================================================================
 
@@ -20,7 +20,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"          191110"
+	dc.b	"          191211"
 ;	dc.b	"MDSDRV190525V0.0"
 
 ;======================================================================
@@ -188,7 +188,6 @@ mds_update_voices
 	lea		TSIZE(twork),twork				; next track
 	dbra	tnum,@next_track
 	swap	tnum							; restore tempo counter
-	rts
 
 	start_z80
 
@@ -413,7 +412,7 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_length_table
 	dc.b	1,2,2,2, 2,2,2,2, 2,2,2,2, 2,3,2,2		;e0
-	dc.b	0,0,0,0, 0,0,0,0, 3,2,1,2, 2,3,2,0		;f0
+	dc.b	0,0,0,0, 0,0,0,0, 3,2,1,2, 2,3,1,0		;f0
 @cmd_table
 	bra.w	@cmd_slr						;e0 slur
 	bra.w	@cmd_ins						;e1 instrument
@@ -461,9 +460,8 @@ mds_update_seq
 	bra.w	@command_done
 
 @cmd_return
-	subq.b	#1,@cmd
+	subq.b	#2,@cmd
 	move.b	@cmd,t_stack_pos(twork)
-	lsl.b	#1,@cmd
 	move.w	t_stack(twork,@cmd),@trackpos	; pop return address
 @cmd_dummy
 	rts
@@ -479,8 +477,7 @@ mds_update_seq
 ; ins - set instrument (or PSG envelope)
 ;----------------------------------------------------------------------
 ; CAUTION: instrument data must fit within 32k of w_sdtop address
-;  change "lea w_sdtop(work,@cmd),tmpa0" with "lea w_sdtop(work),tmpa0"
-;  then "add @cmd,tmpa0"
+;  due to the "movea @cmd,tmpa0"
 ;----------------------------------------------------------------------
 @cmd_ins
 	move.b	0(tbase,@trackpos),@cmd
@@ -488,13 +485,13 @@ mds_update_seq
 	bset	#nf_ins,t_note_flag(twork)
 	lsl.w	#1,@cmd
 	move.w	0(tbase,@cmd),@cmd				; instr address
-	lea		w_sdtop(work,@cmd),tmpa0		; ptr. to ins data
+	movea.w	@cmd,tmpa0
 	move.b	t_channel_id(twork),@cmd
 	cmpi.b	#6,@cmd							; fm or psg
 	bcc.s	@cmd_ins_psg
-	lea		24(tmpa0),tmpa0					; fm tl offset
-	move.l	(tmpa0)+,t_fm_tl(twork)
-	move.b	(tmpa0),t_fm_alg(twork)
+	adda.l	w_sdtop(work),tmpa0				; ptr. to ins data
+	move.l	24(tmpa0),t_fm_tl(twork)
+	move.b	30(tmpa0),t_fm_alg(twork)
 	rts
 
 @cmd_ins_psg
@@ -648,29 +645,71 @@ mds_update_seq
 ; lp - loop start
 ;----------------------------------------------------------------------
 @cmd_lp
+	move.b	t_stack_pos(twork),@cmd
+	move.b	#$ff,t_stack(twork,@cmd)
+	move.w	@trackpos,2+t_stack(twork,@cmd)
+	addq.b	#4,@cmd
+@cmd_lpf_exit
+	move.b	@cmd,t_stack_pos(twork)
 	rts
 
 ;----------------------------------------------------------------------
 ; lpf - loop finish
 ;----------------------------------------------------------------------
 @cmd_lpf
+	move.b	t_stack_pos(twork),@cmd
+	subq.b	#4,@cmd
+	move.b	t_stack(twork,@cmd),@tempreg
+	cmpi.b	#$ff,@tempreg
+	bne.s	@cmd_lpf_decrease
+	move.b	0(tbase,@trackpos),@tempreg
+@cmd_lpf_decrease
+	subq.b	#1,@tempreg
+	beq.s	@cmd_lpf_exit
+	move.b	@tempreg,t_stack(twork,@cmd)
+	move.w	2+t_stack(twork,@cmd),@trackpos
+	moveq	#1,@cmdlen
 	rts
 
 ;----------------------------------------------------------------------
 ; lpb - loop break
 ;----------------------------------------------------------------------
 @cmd_lpb
+	move.b	t_stack_pos(twork),@cmd
+	subq.b	#4,@cmd
+	tst.b	t_stack(twork,@cmd)
+	bne.s	@cmd_lpb_skip
+	add.b	0(tbase,@trackpos),@cmdlen
+	move.b	@cmd,t_stack_pos(twork)
+@cmd_lpb_skip
 	rts
+
 ;----------------------------------------------------------------------
 ; lpbl - loop break (long)
 ;----------------------------------------------------------------------
 @cmd_lpbl
+	move.b	t_stack_pos(twork),@cmd
+	subq.b	#4,@cmd
+	tst.b	t_stack(twork,@cmd)
+	bne.s	@cmd_lpb_skip
+	move.b	0(tbase,@trackpos),@tempreg ;no need to align 16-bit
+	lsl.w	#8,@tempreg
+	move.b	0(tbase,@trackpos),@tempreg
+	add.w	@tempreg,@cmdlen
+	move.b	@cmd,t_stack_pos(twork)
 	rts
 
 ;----------------------------------------------------------------------
 ; pat - subroutine
 ;----------------------------------------------------------------------
 @cmd_pat
+	move.b	t_stack_pos(twork),@cmd
+	move.w	@trackpos,@cmd
+	addq.b	#4,@cmd
+	move.b	@cmd,t_stack_pos(twork)
+	move.b	0(tbase,@trackpos),@cmd
+	lsl.w	#1,@cmd
+	move.w	0(tbase,@cmd),@trackpos				; subroutine address
 	rts
 
 ;======================================================================
@@ -799,9 +838,12 @@ mds_note_table
 mds_psg_init
 	dc.b	$10,$01,$1f,$00
 
+;======================================================================
+; update routine
+;----------------------------------------------------------------------
 mds_ch_offset
-@f	equ	0	;dummy
-@p	equ mds_ch_psg-mds_ch_update	;dummy
+@f	equ	0	; FM update offset
+@p	equ mds_ch_psg-mds_ch_update	; PSG update routine
 @d	equ mds_ch_dummy-mds_ch_update	;dummy
 	dc.w	@f,@f,@f,@f,@f,@f,@p,@p,@p,@p,@d,@d,@d,@d,@d,@d
 
@@ -841,6 +883,9 @@ mds_fm_vol
 mds_fm_pan_lfo
 	rts
 
+;======================================================================
+; PSG update
+;----------------------------------------------------------------------
 mds_psg_update
 mds_psg_key_on
 mds_psg_key_off

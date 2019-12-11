@@ -51,3 +51,4 @@ bgm00:
 	dc.b	ins,0,vol,$8f
 	dc.b	en3,l8, en3,l16,en3,gn3,l8, en3,l16,an3,l8, en3,l16,an3,as3,an3,gn3,en3,l8, l8, en3, l8
 	dc.b	finish
+; vim: set ft=asm68k sw=4 ts=4 noet:

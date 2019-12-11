@@ -209,3 +209,4 @@ start_z80	macro
 	endm
 
 	list +
+; vim: set ft=asm68k sw=4 ts=4 noet:

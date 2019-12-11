@@ -499,3 +499,4 @@ pad_read:
 	lsl.w	#8,d0
 	move.b	(a0),d0
 	rts 
+; vim: set ft=asm68k sw=4 ts=4 noet:

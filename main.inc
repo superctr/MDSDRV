@@ -11,3 +11,5 @@ r_pcount1		rs.w	1			; VDP counter at end of sound driver
 r_driver		rs.w	WSIZE		; sound driver
 
 r_request		rs.w	1
+
+; vim: set ft=asm68k sw=4 ts=4 noet:

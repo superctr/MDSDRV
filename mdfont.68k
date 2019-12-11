@@ -180,3 +180,4 @@ vwf_line_finish:
 	rts
 	
 	endif ; VWF_ENABLED
+; vim: set ft=asm68k sw=4 ts=4 noet:

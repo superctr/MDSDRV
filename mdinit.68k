@@ -138,3 +138,4 @@ entry:
 	dc.w    $F108, $D9C1, $D1E1, $F1F9, $F3ED, $5636
 	dc.w    $E9E9
 @z80_end:
+; vim: set ft=asm68k sw=4 ts=4 noet:
