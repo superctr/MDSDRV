@@ -83,7 +83,6 @@ t_channel_flag	rs.b	1			; cf_*
 t_base_addr		rs.l	1			; sequence base addr
 t_fm3_mask		equ	t_base_addr		; ch3 op mask (using top 8 bits)
 t_position		rs.w	1			; sequence position
-t_drum_mode		rs.w	1			; location of drum table, or 0
 t_stack_pos		rs.b	1
 t_counter		rs.b	1			; ticks until next update
 t_rest_time		rs.b	1			; length of last rest
