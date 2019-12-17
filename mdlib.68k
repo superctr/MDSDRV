@@ -9,15 +9,12 @@
 ;   a0-a1, d0-d5
 vdp_init:
 	;tst.w	vdp_data				;why?
-
 	lea		@reg_table(pc),a0
 	move.l	#vdp_control,a1
-
 @dma_busy
 	move.w	(a1), d0
 	btst	#1, d0
 	bne.s	@dma_busy
-
 @copy_reg_loop
 	move.w	(a0)+, d0
 	beq.s	@end
@@ -26,7 +23,13 @@ vdp_init:
 @end
 	bsr.w	vdp_clear
 	bra.w	vdp_init_font
-	
+
+;----------------------------------------------------------------------
+; according to kabuto's notes, you can't write to register 23 (DMA
+; type/source high) with bit 7 clear except immediately before a DMA!
+; Otherwise the MD will crash and burn when you try to access the VDP
+; and you'll wonder what the hell happened!
+;----------------------------------------------------------------------
 @reg_table:
 	dc.w	$8004	; 0 hint off, counter on
 	dc.w	$8114	; 1 disp off, vint off, dma on, v28
@@ -34,24 +37,24 @@ vdp_init:
 	dc.w	$832C	; 3 window  = $b000
 	dc.w	$8406	; 4 plane b = $c000
 	dc.w	$8568	; 5 sprite  = $d000
-	dc.w	$8600	; 6 unused
+;	dc.w	$8600	; 6 unused
 	dc.w	$8700	; 7 bg color = 0,0
-	dc.w	$8800	; 8 unused
-	dc.w	$8900	; 9 unused
+;	dc.w	$8800	; 8 unused
+;	dc.w	$8900	; 9 unused
 	dc.w	$8A10	;10 hint interval = 16
 	dc.w	$8B00	;11 exint off
 	dc.w	$8C81	;12 h40, s/h off, interlace off
 	dc.w	$8D38	;13 hscroll = $e000
-	dc.w	$8E00	;14 unused
+;	dc.w	$8E00	;14 unused (128K VRAM mode)
 	dc.w	$8F02	;15 auto increment = 2
 	dc.w	$9011	;16 scroll 64x64
 	dc.w	$9100	;17 window position = left
 	dc.w	$9200	;18 window position = top
-	dc.w	$9300	;19 dma size (low)
-	dc.w	$9400	;20 dma size (high)
-	dc.w	$9500	;21 dma source (low)
-	dc.w	$9600	;22 dma source (mid)
-	dc.w	$9700	;23 dma source (high)
+;	dc.w	$9300	;19 dma size (low)
+;	dc.w	$9400	;20 dma size (high)
+;	dc.w	$9500	;21 dma source (low)
+;	dc.w	$9600	;22 dma source (mid)
+;	dc.w	$9700	;23 dma type / source (high)
 	dc.w	$0000
 
 ;======================================================================
@@ -68,17 +71,15 @@ vdp_clear:
 	move.l	#vram_dma_flag,(a1)	; begin adress
 	move.w	#0,vdp_data		; fill with zeros
 @dma_wait:	
-	move.w	(a1),d0
+	move.w	(a1),d0			; wait until dma is done
 	btst.l	#1,d0
 	bne		@dma_wait
-
 	move.w	#$8f02,(a1)		; auto increment = 2
     move.l  #vsram_write_flag, (a1)
-	move.w	#19,d1
+	move.w	#19,d0
 @vsram_loop
 	move.l	#0,vdp_data		; clear vsram
 	dbra	d0,@vsram_loop
-
 	move.l	#cram_write_flag, (a1)
 	move.w	#63, d0
 @cram_loop:
