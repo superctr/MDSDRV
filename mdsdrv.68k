@@ -284,24 +284,23 @@ mds_start_song
 	beq.w	@skip_track
 
 	move.l	tbase,t_base_addr(twork)
-	move.w	(tmpa0)+,@reqdata				;channel id
+	move.b	(tmpa0)+,@reqdata				;channel id
+	move.b	(tmpa0)+,t_channel_flag(twork)
+	lsl.w	#8,@reqdata
 	or.w	rnum,@reqdata
 	move.w	@reqdata,t_channel_id(twork)
 
-	lsr.w	#8,@reqdata
 	bset	@reqdata,w_chmask(work,rnum)
-	cmp.w	#ct_psg,@reqdata
-	bcs		@not_psg
+	cmp.w	#ct_psg<<8,@reqdata
+	bcs.s	@not_psg
 	move.l	tmpa1,t_psg_eg_addr(twork)		;psg eg initialize
 	move.w	#$000f,t_psg_eg_pos(twork)
 
 @not_psg
 	move.w	(tmpa0)+,t_position(twork)		;start position
-	move.w	@zero,t_drum_mode(twork)
 	move.w	@zero,t_stack_pos(twork)		;stack_pos & counter
 	move.w	#$0c0c,t_rest_time(twork)		;default time
 	and.b	#nm_reset,t_note_flag(twork)
-	move.b	@zero,t_channel_flag(twork)
 	move.b	@zero,t_stack_pos(twork)
 
 @skip_track

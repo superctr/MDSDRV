@@ -119,7 +119,7 @@ Sequence header format
 		Track table, read as follows:
 			+0 (ub) - t_channel_id
 				Channel ID
-			+1 (ub) - t_request_id
+			+1 (ub) - t_channel_flag
 				Must be 0x00
 			+2 (sw) - t_position
 				Sequence data offset from song data table (tbase)
@@ -165,46 +165,44 @@ Sequence data format (WIP)
 	e8 dd(ub) - peg
 		Set pitch envelope. The argument is an index into the song
 		table. See the pitch envelope format specified in this file.
-	e9 dd(ub) - lfo
-		Set LFO parameters for this channel.
-		TODO: explain further
-	ea dd(ub) - pan
+	e9 dd(ub) - pan
 		Set panning for this channel.
 		TODO: explain further
-	eb dd(ub) - flg
-		Set flags for this channel.
-		TODO: explain further.
-	ec dd(ub) - pcm
-		Set PCM mode for this channel.
+	ea dd(ub) - lfo
+		Set LFO parameters for this channel.
 		TODO: explain further
-	ed dd(ub) - lfod
+	eb dd(ub) - lfod
 		Set LFO delay for this channel.
 		TODO: explain further.
-	ee rr(ub) ww(ub) - fmreg
-		FM register write. Write data dd to register rr.
-	ef rr(ub) ww(ub) - fmcreg
+	ec dd(ub) - flg
+		Set flags for this channel.
+		TODO: explain further.
+	ed rr(ub) ww(ub) - fmcreg
 		FM channel register write. Write data dd to register rr
 		adding a fixed offset for the channel.
-	f0 oo(ub) dd(ub) - fmtl
+	ee oo(ub) dd(ub) - fmtl
 		FM TL write.
 		TODO: explain further
-	f1 oo(ub) dd(ub) - fmtlm
+	ef oo(ub) dd(ub) - fmtlm
 		FM TL modify.
 		TODO: explain further
-	f8 dd(ub) - tempo
+	f0 dd(ub) - pcm
+		Set instrument and enable PCM mode for this channel.
+		TODO: explain further
+	f8 rr(ub) ww(ub) - fmreg
+		FM register write. Write data dd to register rr.
+	f9 dd(ub) - tempo
 		Set tempo. Tempo is given as dd*256/300
-	f9 - lp
+	fa - lp
 		Loop start.
-	fa - lpf
+	fb - lpf
 		Loop finish.
-	fb ww(sw) - lpb
+	fc ww(sw) - lpb
 		Loop break.
-	fc ww(sl) - lpbl
+	fd ww(sl) - lpbl
 		Loop break (long).
-	fd ww(sw) - pat
+	fe ww(sw) - pat
 		Pattern (subroutine)
-	fe (ub) - dmode
-		Drum mode.
 	ff - finish
 		Finish.
 
