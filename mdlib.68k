@@ -70,12 +70,12 @@ vdp_clear:
 	move.w	#$9780,(a1)		; dma fill
 	move.l	#vram_dma_flag,(a1)	; begin adress
 	move.w	#0,vdp_data		; fill with zeros
-@dma_wait:	
+@dma_wait:
 	move.w	(a1),d0			; wait until dma is done
 	btst.l	#1,d0
 	bne		@dma_wait
 	move.w	#$8f02,(a1)		; auto increment = 2
-    move.l  #vsram_write_flag, (a1)
+	move.l	#vsram_write_flag, (a1)
 	move.w	#19,d0
 @vsram_loop
 	move.l	#0,vdp_data		; clear vsram
@@ -88,7 +88,7 @@ vdp_clear:
 	rts
 
 ;======================================================================
-; write init font
+; copy font data to VRAM
 ;----------------------------------------------------------------------
 ; TRASHES
 ;   a0-a1, d0-d5
@@ -405,13 +405,13 @@ print_next
 	move.w	(a2),d2
 	bsr.w	vdp_print_hex_w
 	bra.w	@next_cmd
-	
+
 @cmd_print_hex_l				; 0a Print long hex
 	bsr.w	@get_location
 	move.l	(a2),d2
 	bsr.w	vdp_print_hex_l
 	bra.w	@next_cmd
-	
+
 @get_location
 	move.b	(a0)+,d2
 	swap	d2
@@ -439,7 +439,7 @@ pad_init:
 	move.b	d0,($A1000B).l	; init port 2 (joypad 2)
 	move.b	d0,($A1000D).l	; init port 3 (expansion)
 	start_z80
-	rts	
+	rts
 
 ;==============================================================================
 ; Reads joypads. Call in vblank
@@ -452,7 +452,7 @@ pad_read:
 	lea		$A10003,a0			; first	joypad port
 
 	bsr.b	@get_pad
-	
+
 	move.w	(a1),d1				; last push
 	eor.w	d2,d1
 	move.w	d2,(a1)+			; store push
@@ -460,7 +460,7 @@ pad_read:
 	move.w	d2,(a1)				; store press
 
 	rts
-		
+
 ; this joypad routine was written by Chilly Willy from gendev forum
 ; http://gendev.spritesmind.net/forum/viewtopic.php?p=9136
 ; get current pad value
@@ -504,5 +504,5 @@ pad_read:
 	move.b	#0x40,(a0)
 	lsl.w	#8,d0
 	move.b	(a0),d0
-	rts 
+	rts
 ; vim: set ft=asm68k sw=4 ts=4 noet:

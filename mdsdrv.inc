@@ -162,17 +162,20 @@ w_track			rs.b	tsize*TCOUNT
 
 WSIZE			rs.b	0
 
-	inform		0,"each track work area is %d bytes",TSIZE
+;======================================================================
+; RAM footprint statistic
+;======================================================================
+	inform		0,"Track work area size is %d bytes",TSIZE
 	if TSIZE&1
-		inform	3,"Track data length is misaligned"
+		inform	3,"Track work area size is misaligned"
 	endif
 	if T_FMSIZE>TSIZE
-		inform	3,"FM type is too big (%d > %d)",T_FMSIZE,TSIZE
+		inform	3,"FM specific area is too big (%d > %d)",T_FMSIZE,TSIZE
 	endif
 	if T_PSGSIZE>TSIZE
-		inform	3,"PSG type is too big (%d > %d)",T_PSGSIZE,TSIZE
+		inform	3,"PSG specific area is too big (%d > %d)",T_PSGSIZE,TSIZE
 	endif
-	inform		0,"sound driver work area is %d bytes",WSIZE
+	inform		0,"Sound driver work area size is %d bytes",WSIZE
 
 break	macro
 		clr.w	$ff0000
