@@ -442,17 +442,57 @@ pad_init:
 	rts
 
 ;==============================================================================
+; read single phase from controller
+read_pad_port	macro
+	move.b  #0x00,(a0)
+	nop
+	nop
+	move.b	(a0),d0
+	move.b	#0x40,(a0)
+	lsl.w	#8,d0
+	move.b	(a0),d0
+	endm
+
+;==============================================================================
 ; Reads joypads. Call in vblank
 ;------------------------------------------------------------------------------
 ; TRASHES
 ;   a0-a1, d1-d2
 pad_read:
-
 	lea		joy1_push(pc),a1	; address where joypad states are written
 	lea		$A10003,a0			; first	joypad port
 
-	bsr.b	@get_pad
-
+; this joypad routine was written by Chilly Willy from gendev forum
+; http://gendev.spritesmind.net/forum/viewtopic.php?p=9136
+; get current pad value
+; entry: a0 = pad control port
+; exit:  d2 = pad value (0 0 0 1 M X Y Z S A C B R L D U) or
+;                       (0 0 0 0 0 0 0 0 S A C B R L D U)
+@next_pad:
+	move.w  #0xF000,d2			; no pad
+	stop_z80
+	read_pad_port			; - 0 s a 0 0 d u - 1 c b r l d u
+	move.w	d0,d1
+	andi.w	#0x0C00,d0
+	bne.b	@no_pad
+	read_pad_port			; - 0 s a 0 0 d u - 1 c b r l d u
+	read_pad_port			; - 0 s a 0 0 0 0 - 1 c b m x y z
+	move.w	d0,d2
+	read_pad_port			; - 0 s a 1 1 1 1 - 1 c b r l d u
+	start_z80
+	andi.w	#0x0F00,d0		; 0 0 0 0 1 1 1 1 0 0 0 0 0 0 0 0
+	cmpi.w	#0x0F00,d0
+	beq.b	@common			; six button pad
+	move.w	#0x010F,d2		; three button pad
+@common:
+	lsl.b	#4,d2			; - 0 s a 0 0 0 0 m x y z 0 0 0 0
+	lsl.w	#4,d2			; 0 0 0 0 m x y z 0 0 0 0 0 0 0 0
+	andi.w	#0x303F,d1		; 0 0 s a 0 0 0 0 0 0 c b r l d u
+	move.b	d1,d2			; 0 0 0 0 m x y z 0 0 c b r l d u
+	lsr.w	#6,d1			; 0 0 0 0 0 0 0 0 s a 0 0 0 0 0 0
+	or.w	d1,d2			; 0 0 0 0 m x y z s a c b r l d u
+	eori.w	#0x1FFF,d2		; 0 0 0 1 M X Y Z S A C B R L D U
+@no_pad:
 	move.w	(a1),d1				; last push
 	eor.w	d2,d1
 	move.w	d2,(a1)+			; store push
@@ -461,48 +501,5 @@ pad_read:
 
 	rts
 
-; this joypad routine was written by Chilly Willy from gendev forum
-; http://gendev.spritesmind.net/forum/viewtopic.php?p=9136
-; get current pad value
-; entry: a0 = pad control port
-; exit:  d2 = pad value (0 0 0 1 M X Y Z S A C B R L D U) or (0 0 0 0 0 0 0 0 S A C B R L D U)
-@get_pad:
-	stop_z80
-	bsr.b	@get_input		;/* - 0 s a 0 0 d u - 1 c b r l d u */
-	move.w	d0,d1
-	andi.w	#0x0C00,d0
-	bne.b	@no_pad
-	bsr.b	@get_input		;/* - 0 s a 0 0 d u - 1 c b r l d u */
-	bsr.b	@get_input		;/* - 0 s a 0 0 0 0 - 1 c b m x y z */
-	move.w	d0,d2
-	bsr.b	@get_input		;/* - 0 s a 1 1 1 1 - 1 c b r l d u */
-	start_z80
-	andi.w	#0x0F00,d0		;/* 0 0 0 0 1 1 1 1 0 0 0 0 0 0 0 0 */
-	cmpi.w	#0x0F00,d0
-	beq.b	@common			;/* six button pad */
-	move.w	#0x010F,d2		;/* three button pad */
-@common:
-	lsl.b	#4,d2			;/* - 0 s a 0 0 0 0 m x y z 0 0 0 0 */
-	lsl.w	#4,d2			;/* 0 0 0 0 m x y z 0 0 0 0 0 0 0 0 */
-	andi.w	#0x303F,d1		;/* 0 0 s a 0 0 0 0 0 0 c b r l d u */
-	move.b	d1,d2			;/* 0 0 0 0 m x y z 0 0 c b r l d u */
-	lsr.w	#6,d1			;/* 0 0 0 0 0 0 0 0 s a 0 0 0 0 0 0 */
-	or.w	d1,d2			;/* 0 0 0 0 m x y z s a c b r l d u */
-	eori.w	#0x1FFF,d2		;/* 0 0 0 1 M X Y Z S A C B R L D U */
-	rts
 
-@no_pad:
-	move.w  #0xF000,d2
-	rts
-
-; read single phase from controller
-@get_input:
-	move.b  #0x00,(a0)
-	nop
-	nop
-	move.b	(a0),d0
-	move.b	#0x40,(a0)
-	lsl.w	#8,d0
-	move.b	(a0),d0
-	rts
 ; vim: set ft=asm68k sw=4 ts=4 noet:
