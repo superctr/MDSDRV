@@ -36,7 +36,6 @@ cf		equ		0
 ; note flags
 ;======================================================================
 	rsreset
-nf_enabled		rs.b	1			; envelopes enabled
 nf_silence		rs.b	1			; trigger silence
 nf_key_on		rs.b	1			; keyon trigger
 nf_key_off		rs.b	1			; keyoff trigger
@@ -44,6 +43,7 @@ nf_slur			rs.b	1			; slur next note
 nf_ins			rs.b	1			; load new instrument
 nf_vol			rs.b	1			; load new volume
 nf_pan_lfo		rs.b	1			; load new pan/lfo
+nf_enabled		rs.b	1			; envelopes enabled(must be bit7!)
 
 ;======================================================================
 ; channel flags
@@ -59,9 +59,9 @@ cf_inhibit		rs.b	1			; free
 ;======================================================================
 ; flag bitmasks
 ;======================================================================
-nm_restore		equ		(1<<nf_ins)|(1<<nf_vol)|(1<<nf_pan_lfo)
-nm_stop			equ		(1<<nf_silence)|(1<<nf_key_off)
-nm_reset		equ		~((1<<nf_enabled)|(1<<nf_key_on))
+nm_init			equ		((1<<nf_ins)|(1<<nf_pan_lfo)|(1<<nf_enabled))
+nm_restore		equ		((1<<nf_ins)|(1<<nf_vol)|(1<<nf_pan_lfo))
+nm_stop			equ		((1<<nf_silence)|(1<<nf_key_off))
 
 ;======================================================================
 ; channel type

@@ -160,31 +160,38 @@ mds_update_voices
 	stop_z80
 
 	lea		w_track(work),twork				; first track's addr
+	lea		w_chmask(work),tbase			; channel mask
 	move.w	#TCOUNT-1,tnum
 
 @next_track
 	move.w	t_note_flag(twork),flag
+;	btst	#nf+nf_enabled,flag
+;	beq.s	@skip_track
+	bpl.s	@skip_track
 
+	movea	tbase,tmpa0
 	move.b	t_channel_id(twork),chnid		;check priority
 	move.b	t_request_id(twork),d0
-	lea		w_chmask(work),tmpa0
-	rept	RCOUNT
+	rept	RCOUNT-1
+		beq.s	@has_priority
 		move.w	(tmpa0)+,d1
 		btst	chnid,d1
-		bne.s	@prio_known
+		bne.s	@no_priority
 		subq.b	#2,d0						;next request
 	endr
-@prio_known
+@has_priority
+; ... do stuff here ...
+	btst	#nf+nf_silence,flag
+	beq.s	@no_silence
 	bclr	#nf+nf_enabled,flag
-	tst.b	d0
-	bne		@no_priority
-	bset	#nf+nf_enabled,flag
-
+@no_silence
+; .... do stuff here
 	bra.s	@track_done
 @no_priority
 	ori.w	#nm_restore<<nf,flag
 @track_done
 	move.w	flag,t_note_flag(twork)
+@skip_track
 	lea		TSIZE(twork),twork				; next track
 	dbra	tnum,@next_track
 	swap	tnum							; restore tempo counter
@@ -285,6 +292,7 @@ mds_start_song
 
 	move.l	tbase,t_base_addr(twork)
 	move.b	(tmpa0)+,@reqdata				;channel id
+	move.b	#nm_init,t_note_flag(twork)
 	move.b	(tmpa0)+,t_channel_flag(twork)
 	lsl.w	#8,@reqdata
 	or.w	rnum,@reqdata
@@ -300,7 +308,6 @@ mds_start_song
 	move.w	(tmpa0)+,t_position(twork)		;start position
 	move.w	@zero,t_stack_pos(twork)		;stack_pos & counter
 	move.w	#$0c0c,t_rest_time(twork)		;default time
-	and.b	#nm_reset,t_note_flag(twork)
 	move.b	@zero,t_stack_pos(twork)
 
 @skip_track
@@ -449,7 +456,7 @@ mds_update_seq
 	move.b	t_stack_pos(twork),@cmd
 	bne		@cmd_return
 
-	ori.b	#nf_silence|nf_key_off,t_note_flag(twork)
+	ori.b	#nm_stop,t_note_flag(twork)
 	bset	#cf_inhibit,t_channel_flag(twork)
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
 	bclr	tnum,w_tmask(work,rnum)			;disable track
@@ -734,13 +741,12 @@ mds_update_voice
 ; TRASHES
 ;	tmpa0, d1, d2
 mds_check_priority
-	clr.w	d1
-	bset	d0,d1		; set channel bit
+	move.w	d0,d2
 	clr.w	d0
 	lea		w_chmask(work),tmpa0
 	rept	RCOUNT
-		move.w	(tmpa0)+,d2
-		btst	d1,d2
+		move.w	(tmpa0)+,d1
+		btst	d2,d1
 		bne		@end
 		addq.b	#2,d0						;next request
 	endr
