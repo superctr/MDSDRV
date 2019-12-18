@@ -165,11 +165,9 @@ mds_update_voices
 
 @next_track
 	move.w	t_note_flag(twork),flag
-;	btst	#nf+nf_enabled,flag
-;	beq.s	@skip_track
-	bpl.s	@skip_track
+	bpl.s	@skip_track						;skip if not enabled
 
-	movea	tbase,tmpa0
+	movea.l	tbase,tmpa0
 	move.b	t_channel_id(twork),chnid		;check priority
 	move.b	t_request_id(twork),d0
 	rept	RCOUNT-1
