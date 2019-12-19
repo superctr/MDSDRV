@@ -139,8 +139,7 @@ setup_vsram_write	macro
 	ori.l #vsram_write_flag,\1
 	move.l \1, vdp_control
 	endm
-	
-	
+
 ;======================================================================
 ; Print command list
 ;======================================================================
@@ -189,21 +188,29 @@ p_hex_l		macro
 ;======================================================================
 ; Z80 access macro
 ;======================================================================
+; stop Z80 and wait for bus grant
 stop_z80	macro
-    move.w  #$100, (z80_bus_request)
+	move.w	#$100, (z80_bus_request)
 stop_z80\@:
-    btst.b  #0, (z80_bus_request)
-    bne.s   stop_z80\@
-    endm
+	btst.b	#0, (z80_bus_request)
+	bne.s	stop_z80\@
+	endm
 
+; stop Z80 without waiting for bus grant.
+block_z80	macro
+	move.w	#$100, (z80_bus_request)
+	endm
+
+; reset Z80 and YM2612. Note that d0 is trashed
 reset_z80	macro
-    move.w  #$000, (z80_reset)
-    rept    $10
-    nop
-    endr
-    move.w  #$100, (z80_reset)
-    endm
+	move.w	#$000,z80_reset
+	move.w	#20,d0
+@reset_wait
+	dbra	d0,@reset_wait
+	move.w	#$100,z80_reset
+	endm
 
+; start Z80
 start_z80	macro
 	move.w	#0,(z80_bus_request).l
 	endm

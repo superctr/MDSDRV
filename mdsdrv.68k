@@ -70,6 +70,10 @@ mds_halt
 	move.b	#$df,(a1)
 	move.b	#$ff,(a1)
 
+	reset_z80
+	start_z80
+	rts
+
 	lea		sound_fm_a0,a1
 @next_part
 	move.b	#$80,d1							; release rate
