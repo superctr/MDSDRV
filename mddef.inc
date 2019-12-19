@@ -19,6 +19,10 @@ io_port_2_control		equ $A1000A
 io_expansion_control	equ $A1000C
 io_tmss					equ $A14000
 
+; ym2612 (ym3438) wait requirement:
+;  after address write:   17 cycles
+;  after data write:      83 cycles (reg 21-9e)
+;                         47 cycles (reg a0-b6)
 sound_fm_a0				equ $A04000
 sound_fm_d0				equ $A04001
 sound_fm_a1				equ $A04002
