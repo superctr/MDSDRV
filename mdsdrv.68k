@@ -1,6 +1,6 @@
 ;======================================================================
 ; MDSDRV - mega drive 68k sound driver
-; (C) 2019 ian karlsson
+; (C) 2019-2020 ian karlsson
 ;======================================================================
 
 ;======================================================================
@@ -20,7 +20,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"          191211"
+	dc.b	"sleepy    200107"
 ;	dc.b	"MDSDRV190525V0.0"
 
 ;======================================================================
@@ -182,12 +182,12 @@ mds_update_voices
 		subq.b	#2,d0						;next request
 	endr
 @has_priority
-; ... do stuff here ...
 	btst	#nf+nf_silence,flag
 	beq.s	@no_silence
 	bclr	#nf+nf_enabled,flag
+; TODO: re-enable channel - set flags here
 @no_silence
-; .... do stuff here
+; TODO: channel update here
 	bra.s	@track_done
 @no_priority
 	ori.w	#nm_restore<<nf,flag
@@ -421,7 +421,7 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_length_table
 	dc.b	1,2,2,2, 2,2,2,2, 2,2,2,2, 2,3,2,2		;e0
-	dc.b	0,0,0,0, 0,0,0,0, 3,2,1,2, 2,3,1,0		;f0
+	dc.b	2,0,0,0, 0,0,3,0, 2,2,1,2, 2,3,1,0		;f0
 @cmd_table
 	bra.w	@cmd_slr						;e0 slur
 	bra.w	@cmd_ins						;e1 instrument
@@ -439,15 +439,15 @@ mds_update_seq
 	bra.w	@cmd_fmcreg						;ed fm channel reg write
 	bra.w	@cmd_fmtl						;ee fm tl write
 	bra.w	@cmd_fmtlm						;ef fm tl change
-	bra.w	@cmd_finish						;f0
+	bra.w	@cmd_finish						;f0 ** reserved for pcm ins
 	bra.w	@cmd_finish						;f1
 	bra.w	@cmd_finish						;f2
 	bra.w	@cmd_finish						;f3
 	bra.w	@cmd_finish						;f4
 	bra.w	@cmd_finish						;f5
-	bra.w	@cmd_finish						;f6
-	bra.w	@cmd_finish						;f7
-	bra.w	@cmd_fmreg						;f8 fm register write
+	bra.w	@cmd_fmreg						;f6 fm register write
+	bra.w	@cmd_dmfinish					;f7 drum mode finish
+	bra.w	@cmd_comm						;f8 communication byte
 	bra.w	@cmd_tempo						;f9 tempo
 	bra.w	@cmd_lp							;fa loop
 	bra.w	@cmd_lpf						;fb loop finish
@@ -642,6 +642,12 @@ mds_update_seq
 	rts
 
 ;----------------------------------------------------------------------
+; comm - communication byte
+;----------------------------------------------------------------------
+@cmd_comm
+	rts
+
+;----------------------------------------------------------------------
 ; tempo - set song tempo
 ;----------------------------------------------------------------------
 @cmd_tempo
@@ -719,6 +725,12 @@ mds_update_seq
 	move.b	0(tbase,@trackpos),@cmd
 	lsl.w	#1,@cmd
 	move.w	0(tbase,@cmd),@trackpos				; subroutine address
+	rts
+
+;----------------------------------------------------------------------
+; dmfinish - drum mode finish byte
+;----------------------------------------------------------------------
+@cmd_dmfinish
 	rts
 
 ;======================================================================
