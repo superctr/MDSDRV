@@ -309,7 +309,7 @@ mds_start_song
 @not_psg
 	move.w	(tmpa0)+,t_position(twork)		;start position
 	move.w	@zero,t_stack_pos(twork)		;stack_pos & counter
-	move.w	#$0c0c,t_rest_time(twork)		;default time
+	move.w	#$0b0b,t_rest_time(twork)		;default time (-1)
 	move.b	@zero,t_stack_pos(twork)
 
 @skip_track
@@ -405,7 +405,7 @@ mds_update_seq
 
 @cmd_rest2
 	bset	#nf_key_off,t_note_flag(twork)	;80 - rest 2
-	move.b	(tmpa0),t_counter(twork)
+	move.b	t_rest_time(twork),t_counter(twork)
 	move.w	@trackpos,t_position(twork)
 	bra.w	@command_done
 
@@ -691,7 +691,7 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_lpb
 	move.b	t_stack_pos(twork),@cmd
-	subq.b	#4,@cmd
+	subq.b	#4,@cmd  ;optimize with stack-4?
 	tst.b	t_stack(twork,@cmd)
 	bne.s	@cmd_lpb_skip
 	add.b	0(tbase,@trackpos),@cmdlen
@@ -709,7 +709,7 @@ mds_update_seq
 	bne.s	@cmd_lpb_skip
 	move.b	0(tbase,@trackpos),@tempreg ;no need to align 16-bit
 	lsl.w	#8,@tempreg
-	move.b	0(tbase,@trackpos),@tempreg
+	move.b	1(tbase,@trackpos),@tempreg
 	add.w	@tempreg,@cmdlen
 	move.b	@cmd,t_stack_pos(twork)
 	rts
