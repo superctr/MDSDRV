@@ -36,7 +36,7 @@ bgm00:
 	dc.b	$60,$25,$ff,$1b		;sl/rr
 	dc.b	$00,$00,$00,$00		;ssg-eg
 	dc.b	$0f,$32,$0b,$00		;tl
-	dc.b	$3a,$1d				;fb/alg,transpose
+	dc.b	$3a,$18				;fb/alg,transpose
 
 @PSG_0D
 	dc.b	$14,$12,$50,$61,$62,$43,$01,$10,$11,$22,$13,$14,$15,$26,$17,$18

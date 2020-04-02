@@ -20,7 +20,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"sleepy    200107"
+	dc.b	"vaporware 200402"
 ;	dc.b	"MDSDRV190525V0.0"
 
 ;======================================================================
@@ -182,13 +182,17 @@ mds_update_voices
 		subq.b	#2,d0						;next request
 	endr
 @has_priority
-	btst	#nf+nf_silence,flag
-	beq.s	@no_silence
-	bclr	#nf+nf_enabled,flag
+	bclr	#nf+nf_silence,flag
+;	beq.s	@no_silence
 ; TODO: re-enable channel - set flags here
+; channel was disabled and now re-enabled
 @no_silence
-; TODO: channel update here
-	bra.s	@track_done
+	clr.w	d0
+	move.b	chnid,d0
+	bclr	#0,d0
+	lsl.b	d0
+	pea		@track_done(pc)
+	jmp		mds_ch_update_table(pc,d0)
 @no_priority
 	ori.w	#nm_restore<<nf,flag
 @track_done
@@ -201,6 +205,19 @@ mds_update_voices
 	start_z80
 
 	rts
+
+;======================================================================
+; jumptables (each entry serves two channels)
+;----------------------------------------------------------------------
+mds_ch_update_table
+	bra.w	mds_fm_update					;01
+	bra.w	mds_fm_update					;23
+	bra.w	mds_fm_update					;45
+	bra.w	mds_psg_update					;67
+	bra.w	mds_psg_update					;89
+	bra.w	mds_ch_dummy					;ab
+	bra.w	mds_ch_dummy					;cd
+	bra.w	mds_ch_dummy					;ef
 
 ;======================================================================
 ; Request track
@@ -790,7 +807,6 @@ mds_get_fm_pitch
 	lea		@fm_freq_tab(pc,d0),tmpa0
 	move.w	2(tmpa0),d0
 	sub.w	(tmpa0),d0
-	ext.w	d1
 	mulu	d1,d0							;interpolate
 	swap	d0
 	add.w	(tmpa0),d0

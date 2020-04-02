@@ -94,7 +94,7 @@ t_note_time		rs.b	1			; length of last note or tie
 t_channel_id	rs.b	1			; channel type & id lookup
 t_request_id	rs.b	1			; associated request slot
 t_ins			rs.b	1			; instrument
-t_ins_trs		rs.b	1			; instrument transpose
+t_ins_trs		rs.b	1			; instrument transpose (n*2)
 t_note			rs.b	1			; key code
 t_dtn			rs.b	1			; key fraction
 t_pitch			rs.w	1			; portamento modulator
