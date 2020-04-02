@@ -4,7 +4,10 @@
 ;========================================================================
 	list -
 	if def(MML)&(~def(MMLDEF))
-MMLDEF equ 2
+MMLDEF equ 3
+;========================================================================
+; note duration parameters (00-7f)
+;========================================================================
 l1 equ $60
 l2 equ $30
 l2d equ $48
@@ -15,6 +18,9 @@ l8d equ $12
 l16 equ $06
 l16d equ $09
 l32 equ $03
+;========================================================================
+; note commands (80-df)
+;========================================================================
 rest equ $80
 tie equ $81
 cn1 equ $82
@@ -150,6 +156,9 @@ gn8 equ $DD
 gs8 equ $DE
 af8 equ $DE
 an8 equ $DF
+;========================================================================
+; channel commands (e0-f0)
+;========================================================================
 slr equ $E0
 ins equ $E1
 vol equ $E2
@@ -166,7 +175,13 @@ flg equ $EC
 fmcreg equ $ED
 fmtl equ $EE
 fmtlm equ $EF
-fmreg equ $F8
+pcm equ $F0
+;========================================================================
+; system commands (f6-ff)
+;========================================================================
+fmreg equ $F6
+dmfinish equ $F7
+comm equ $F8
 tempo equ $F9
 lp equ $FA
 lpf equ $FB
@@ -175,10 +190,13 @@ lpbl equ $FD
 pat equ $FE
 finish equ $FF
 	else
+;========================================================================
+; system defines
+;========================================================================
 mds_rest equ $80
 mds_tie equ $81
 mds_note_start equ $82
 mds_chn_cmd_base equ $E0
-mds_sys_cmd_base equ $F8
+mds_sys_cmd_base equ $F6
 	endif
 	list +

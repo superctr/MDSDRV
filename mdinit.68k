@@ -68,19 +68,21 @@ md_init
 	dc.l	@unhandled	;	$00fc / reserved	
 
 	dc.b	'SEGA MEGA DRIVE '									;	Konsolnamn
-	dc.b	'(C) CTR 2019.JUN'									;	Copyright
+	dc.b	'(C) CTR 2019.DEC'									;	Copyright
 	dc.b	'                                                '	;	Japansk titel
 	dc.b	'MDSDRV Test Program                             '	;	Västerlänsk titel
-	dc.b	'GM XXXXXXXX-XX'									;	Produktnummer
+	dc.b	'GM 54657374-XX'									;	Produktnummer
 	dc.w	$0000												;	Kontrollsumma
 	dc.b	'J               '									;	Tillbehörskompatibilitet
 	dc.l	$00000000											;	Startadress för ROM
-	dc.l	$003FFFFF											;	Slutaddress för ROM
-	dc.l	$20202020											;	Startaddress för BRAM
-	dc.l	$20202020											;	Slutaddress för BRAM
+	dc.l	$003FFFFF											;	Slutadress för ROM
+	dc.l	$20202020											;	Startadress för BRAM
+	dc.l	$20202020											;	Slutadress för BRAM
 	dc.b	'                        '							;	Modemkompatibilitet
-	dc.b	'                                        '			;	memo
-;	dcb.b	*-$1E0,$20
+;	dc.b	'                                        '			;	Memo
+@build_year	equ	_year+1900
+	dc.b	' built: \#@build_year/\#_month/\#_day \#_hours:\#_minutes:\#_seconds'
+	dcb.b	$1F0-*,$20
 	dc.b	'JUE             '									;	Regionskompatibilitet
 
 	org $200;
@@ -89,8 +91,6 @@ md_init
 	stop	#$2700
 
 entry:
-	clr.l	d0
-	move.l	d0,a0
 	move    #$2700,sr
 	tst.l	io_port_1_control
 	bne.s	@port_initialized

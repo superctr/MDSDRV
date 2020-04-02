@@ -385,6 +385,9 @@ mds_update_seq
 	btst	#nf_slur,t_note_flag(twork)
 	beq.s	@cmd_tie
 	bset	#nf_key_off,t_note_flag(twork)
+;----------------------------------------------------------------------
+; TODO: drum mode jump here
+;----------------------------------------------------------------------
 @cmd_tie
 	lea		t_note_time(twork),tmpa0
 @cmd_read_delta
@@ -787,6 +790,7 @@ mds_get_fm_pitch
 	lea		@fm_freq_tab(pc,d0),tmpa0
 	move.w	2(tmpa0),d0
 	sub.w	(tmpa0),d0
+	ext.w	d1
 	mulu	d1,d0							;interpolate
 	swap	d0
 	add.w	(tmpa0),d0
@@ -820,6 +824,7 @@ mds_get_psg_pitch
 	lea		@psg_freq_tab(pc,d0),tmpa0
 	move.w	2(tmpa0),d0
 	sub.w	(tmpa0),d0
+	ext.w	d1
 	mulu	d1,d0							;interpolate
 	swap	d0
 	add.w	(tmpa0),d0
