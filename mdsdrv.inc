@@ -24,7 +24,7 @@ tnum	equr	d6							; track #
 tmask	equr	d5							; track mask
 
 ; during voice processing
-chnid	equr	d4							; channel id
+chnid	equr	d5							; channel id
 
 ;======================================================================
 ; note flags during voice processing (btst #nf+nf_enabled)
@@ -60,7 +60,7 @@ cf_inhibit		rs.b	1			; free
 ; flag bitmasks
 ;======================================================================
 nm_init			equ		((1<<nf_ins)|(1<<nf_pan_lfo)|(1<<nf_enabled))
-nm_restore		equ		((1<<nf_ins)|(1<<nf_vol)|(1<<nf_pan_lfo))
+nm_restore		equ		((1<<nf_key_off)|(1<<nf_ins)|(1<<nf_vol)|(1<<nf_pan_lfo))
 nm_stop			equ		((1<<nf_silence)|(1<<nf_key_off))
 
 ;======================================================================
@@ -101,7 +101,8 @@ t_pitch			rs.w	1			; portamento modulator
 t_trs			rs.b	1			; transpose
 t_pta			rs.b	1			; portamento speed
 t_vol			rs.b	1			; volume
-t_lfo_delay		rs.b	1
+t_lfo_delay		rs.b	1			; lfo delay
+t_last_pitch	rs.w	1			; calculated pitch
 
 ;----------------------------------------------------------------------
 ; pitch envelope
@@ -152,13 +153,14 @@ w_volume		rs.w	RCOUNT
 w_tmask			rs.w	RCOUNT		;track mask
 w_chmask		rs.w	RCOUNT		;channel usage mask
 
+w_pcm_mask		rs.w	1			;pcm enable mask
 w_fm3_mask		rs.b	1
 w_fm3_alg		rs.b	1
 w_fm3_tl		rs.b	4
 
 w_gtempo		rs.w	1
 
-w_track			rs.b	tsize*TCOUNT
+w_track			rs.b	TSIZE*TCOUNT
 
 WSIZE			rs.b	0
 
