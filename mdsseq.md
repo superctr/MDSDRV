@@ -1,6 +1,9 @@
 MDSDRV Sound data format
 ========================
 
+This document describes the public data structures of MDSDRV, as well
+as the `.MDS` format used for data exchange.
+
 Definitions
 -----------
 
@@ -23,8 +26,8 @@ Struct member definitions will be given like this:
 .MDS binary file format
 -----------------------
 
-The .MDS format is based on RIFF (Resource interchangable file format);
-various data types are stored in named chunks.
+The `.MDS` format is based on RIFF (Resource interchangable file
+format); various data types are stored in named chunks.
 
 If the size of the chunk is non-even, an extra padding byte is
 inserted. This does not count into the chunk size. Though if a padding
@@ -189,13 +192,21 @@ Sequence data format (WIP)
 	f0 dd(ub) - pcm
 		Set instrument and enable PCM mode for this channel.
 		TODO: explain further
-	f8 rr(ub) ww(ub) - fmreg
+	f1..f5
+		Reserved for future use.
+	f6 rr(ub) ww(ub) - fmreg
 		FM register write. Write data dd to register rr.
+	f7 dd(ub) - dmfinish
+		Plays a note with pitch dd, Stops processing of Drum Mode,
+		and reads duration from the `81..df` command.
+	f8 dd(ub) - comm
+		Communication byte write. Used to sync events outside the
+		sound driver with the music.
 	f9 dd(ub) - tempo
 		Set tempo. Tempo is given as dd*256/300
 	fa - lp
 		Loop start.
-	fb - lpf
+	fb dd(ub) - lpf
 		Loop finish.
 	fc ww(sw) - lpb
 		Loop break.
@@ -217,6 +228,13 @@ Voice data format
 	+20 (ub) [0..3] - SSG-EG
 	+24 (ub) [0..3] - TL
 	+28 - FB/ALG
+	+29 - Transpose
+
+The instrument transpose setting works by adjusting the F-num of the
+notes in the scale.
+
+The possible values are 0-31, shifted left by 1. Suggested default
+value is 24, corresponding to `0x30`.
 
 PSG envelope format
 -------------------
@@ -224,5 +242,20 @@ TODO
 
 Pitch envelope format
 ---------------------
-TODO
+
+A pitch envelope consists of a number of "nodes", each node is 4
+bytes long and consists of the following values:
+
+	+0 (sw) - modulator
+		Initial modulation, where 0x100 is a semitone.
+		Range is from (`8000` to `7eff`)
+	+2 (sb) - delta
+		This signed value is added to the modulation counter on each
+		tick.
+	+3 (ub) - length
+		The amount of ticks before the the envelope continues to the
+		next node.
+
+A jump command consists of a single word `7fxx` where `xx` is the
+position of the next node, in logical elements (not bytes).
 
