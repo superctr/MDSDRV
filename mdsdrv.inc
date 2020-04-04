@@ -154,7 +154,7 @@ w_tmask			rs.w	RCOUNT		;track mask
 w_chmask		rs.w	RCOUNT		;channel usage mask
 
 w_pcm_mask		rs.w	1			;pcm enable mask
-w_fm3_mask		rs.b	1
+w_fm3_mask		rs.b	1			;channels with fm3 enabled
 w_fm3_alg		rs.b	1
 w_fm3_tl		rs.b	4
 

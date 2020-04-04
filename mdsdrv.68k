@@ -181,9 +181,11 @@ mds_update_voices
 	beq.s	@no_silence
 	bclr	#nf+nf_enabled,flag
 @no_silence
+	clr.w	d0
+	add.b	chnid,chnid
 	move.b	chnid,d0
-	andi.w	#0x000e,d0
 	add.b	d0,d0
+	add.b	chnid,d0
 	pea		@track_done(pc)
 	jmp		mds_ch_update_table(pc,d0)
 @no_priority
@@ -201,17 +203,30 @@ mds_update_voices
 	rts
 
 ;======================================================================
-; jumptables (each entry serves two channels)
+; channel update routine table
 ;----------------------------------------------------------------------
+mds_ch_mapping	macro
+	moveq	\1,chnid
+	bra.w	\2
+	endm
+
 mds_ch_update_table
-	bra.w	mds_fm_update					;01
-	bra.w	mds_fm_update					;23
-	bra.w	mds_fm_update					;45
-	bra.w	mds_psg_update					;67
-	bra.w	mds_psg_update					;89
-	bra.w	mds_ch_dummy					;ab
-	bra.w	mds_ch_dummy					;cd
-	bra.w	mds_ch_dummy					;ef
+	mds_ch_mapping	#0,mds_fm0_update		;0
+	mds_ch_mapping	#1,mds_fm0_update		;1
+	mds_ch_mapping	#2,mds_fm0_update		;2
+	mds_ch_mapping	#4,mds_fm1_update		;3
+	mds_ch_mapping	#5,mds_fm1_update		;4
+	mds_ch_mapping	#6,mds_fm1_update		;5
+	mds_ch_mapping	#0,mds_psg_update		;6
+	mds_ch_mapping	#1,mds_psg_update		;7
+	mds_ch_mapping	#2,mds_psg_update		;8
+	mds_ch_mapping	#3,mds_psg_update		;9
+	mds_ch_mapping	#10,mds_ch_dummy		;a
+	mds_ch_mapping	#11,mds_ch_dummy		;b
+	mds_ch_mapping	#12,mds_ch_dummy		;c
+	mds_ch_mapping	#13,mds_ch_dummy		;d
+	mds_ch_mapping	#14,mds_ch_dummy		;e
+	mds_ch_mapping	#15,mds_ch_dummy		;f
 
 ;======================================================================
 ; Request track
@@ -885,31 +900,10 @@ mds_psg_init
 	dc.b	$10,$01,$1f,$00
 
 ;======================================================================
-; update routine
+; dummy routine
 ;----------------------------------------------------------------------
-mds_ch_offset
-@f	equ	0	; FM update offset
-@p	equ mds_ch_psg-mds_ch_update	; PSG update routine
-@d	equ mds_ch_dummy-mds_ch_update	;dummy
-	dc.w	@f,@f,@f,@f,@f,@f,@p,@p,@p,@p,@d,@d,@d,@d,@d,@d
-
-mds_ch_update	bra.w	mds_fm_update
-mds_ch_key_on	bra.w	mds_fm_key_on
-mds_ch_key_off	bra.w	mds_fm_key_off
-mds_ch_ins		bra.w	mds_fm_ins
-mds_ch_vol		bra.w	mds_fm_vol
-mds_ch_pan_lfo	bra.w	mds_fm_pan_lfo
-mds_ch_psg
-	bra.w	mds_psg_update
-	bra.w	mds_psg_key_on
-	bra.w	mds_psg_key_off
-	bra.w	mds_psg_ins
-	bra.w	mds_psg_vol
 mds_ch_dummy
-	rept	6
 	rts
-	nop
-	endr
 
 ;======================================================================
 ; Pitch update
@@ -933,11 +927,11 @@ mds_pitch_update
 ;----------------------------------------------------------------------
 	clr.w	d3
 	move.b	t_pta(twork),d3
-	beq.s	@no_pta
+	beq.s	@porta_done
 
 	move.w	d0,d2
 	sub.w	t_pitch(twork),d2						;d2=porta_delta
-	beq.s	@no_pta
+	beq.s	@porta_done
 
 	move.w	d2,d1									;get step
 	asr.w	#8,d1
@@ -953,7 +947,6 @@ mds_pitch_update
 	sub.w	d1,d3
 	eor.w	d2,d3
 	bmi.s	@porta_done
-@no_pta
 	move.w	d1,d0
 @porta_done
 	move.w	d0,t_pitch(twork)
@@ -1151,28 +1144,17 @@ mds_fm_vol_table
 	dc.b	42,40,37,34,32,29,26,24,21,18,16,13,10,8,5,2
 
 ;======================================================================
-; FM channel port/register table
-;----------------------------------------------------------------------
-mds_fm_table
-	dc.w	$0000,$0000						;hi word=port address
-	dc.w	$0000,$0001						;lo word=register address
-	dc.w	$0000,$0002
-	dc.w	$0002,$0004
-	dc.w	$0002,$0005
-	dc.w	$0002,$0006
-
-;======================================================================
 ; FM update
 ;----------------------------------------------------------------------
 ; INPUT:
 ;  work, twork, chnid
 ; TRASHES:
 ;  chnid
-mds_fm_update
+mds_fm1_update
+	bset	#17,chnid								; use second port
+mds_fm0_update
 @fm			equr	tmpa0
 	lea		sound_fm_a0,@fm
-	lsl		#2,chnid
-	move.l	mds_fm_table(pc,chnid),chnid		; FM ins. number
 ;----------------------------------------------------------------------
 ; key_off update
 ;----------------------------------------------------------------------
