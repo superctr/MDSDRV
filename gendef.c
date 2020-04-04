@@ -69,9 +69,9 @@ int main()
 	long interval = 96;
 	for(i=1;i<64;i<<=1)
 	{
-		printf("l%d equ $%02X\n",i, interval);
+		printf("l%d equ $%02X\n",i, interval-1);
 		if(interval < 96 && (~interval & 1))
-			printf("l%dd equ $%02X\n",i, interval + (interval>>1));
+			printf("l%dd equ $%02X\n",i, (interval + (interval>>1) - 1));
 		interval >>= 1;
 	}
 	printf(";========================================================================\n");

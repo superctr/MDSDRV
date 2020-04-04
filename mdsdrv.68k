@@ -458,6 +458,7 @@ mds_update_seq
 
 @cmd_other
 	andi.w	#$1f,@cmd
+	moveq	#0,@cmdlen
 	move.b	@cmd_length_table(pc,@cmd),@cmdlen
 	lsl.b	#2,@cmd
 	pea		@next_command(pc)
@@ -505,7 +506,7 @@ mds_update_seq
 	move.b	t_stack_pos(twork),@cmd
 	bne		@cmd_return
 
-	ori.l	#(nm_stop<<nf)|(cf_inhibit<<cf),flag
+	ori.l	#(nm_stop<<nf)|(1<<(cf+cf_inhibit)),flag
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
 
 	moveq	#-1,@tempreg					;clear channel mask
@@ -624,7 +625,7 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_pan
 	move.b	t_fm_pan_lfo(twork),@cmd
-	andi.b	#$c0,@cmd
+	andi.b	#$3f,@cmd
 	or.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_fm_pan_lfo(twork)
 	bset	#nf+nf_pan_lfo,flag
@@ -638,7 +639,7 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_lfo
 	move.b	t_fm_pan_lfo(twork),@cmd
-	andi.b	#$3f,@cmd
+	andi.b	#$c0,@cmd
 	or.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_fm_pan_lfo(twork)
 	bset	#nf+nf_pan_lfo,flag
@@ -748,9 +749,9 @@ mds_update_seq
 @cmd_lpb
 	move.b	t_stack_pos(twork),@cmd
 	subq.b	#4,@cmd  ;optimize with stack-4?
-	tst.b	t_stack(twork,@cmd)
+	cmpi.b	#1,t_stack(twork,@cmd)
 	bne.s	@cmd_lpb_skip
-	add.b	0(tbase,@trackpos),@cmdlen
+	move.b	0(tbase,@trackpos),@cmdlen
 	move.b	@cmd,t_stack_pos(twork)
 @cmd_lpb_skip
 	rts
@@ -766,7 +767,7 @@ mds_update_seq
 	move.b	0(tbase,@trackpos),@tempreg ;no need to align 16-bit
 	lsl.w	#8,@tempreg
 	move.b	1(tbase,@trackpos),@tempreg
-	add.w	@tempreg,@cmdlen
+	move.w	@tempreg,@cmdlen
 	move.b	@cmd,t_stack_pos(twork)
 	rts
 
@@ -775,10 +776,11 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_pat
 	move.b	t_stack_pos(twork),@cmd
-	move.w	@trackpos,@cmd
-	addq.b	#4,@cmd
+	addq.w	#2,@trackpos
+	move.w	@trackpos,t_stack(twork,@cmd)
+	addq.b	#2,@cmd
 	move.b	@cmd,t_stack_pos(twork)
-	move.b	0(tbase,@trackpos),@cmd
+	move.b	-2(tbase,@trackpos),@cmd
 	lsl.w	#1,@cmd
 	move.w	0(tbase,@cmd),@trackpos				; subroutine address
 	rts
