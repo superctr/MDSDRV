@@ -162,9 +162,9 @@ mds_update_voices
 	lea		w_chmask(work),tbase			; channel mask
 	move.w	#TCOUNT-1,tnum
 
-@next_track
+mds_update_voices_loop
 	move.w	t_note_flag(twork),flag
-	bpl.s	@skip_track						;skip if not enabled
+	bpl.s	mds_next_voice					;skip if not enabled
 
 	movea.l	tbase,tmpa0
 	move.b	t_channel_id(twork),chnid		;check priority
@@ -186,17 +186,13 @@ mds_update_voices
 	move.b	chnid,d0
 	add.b	d0,d0
 	add.b	chnid,d0
-	pea		@track_done(pc)
 	jmp		mds_ch_update_table(pc,d0)
 @no_priority
 	clr.w	t_last_pitch(twork)
-	ori.w	#nm_restore<<nf,flag
-@track_done
-	move.w	flag,t_note_flag(twork)
-@skip_track
+	ori.w	#nm_restore<<nf,t_note_flag(twork)
+mds_next_voice
 	lea		TSIZE(twork),twork				; next track
-	dbra	tnum,@next_track
-	swap	tnum							; restore tempo counter
+	dbra	tnum,mds_update_voices_loop
 
 	start_z80
 
@@ -205,6 +201,8 @@ mds_update_voices
 ;======================================================================
 ; channel update routine table
 ;----------------------------------------------------------------------
+; Each routine must if needed save the flags to memory and jump to
+; mds_next_voice at the end.
 mds_ch_mapping	macro
 	moveq	\1,chnid
 	bra.w	\2
@@ -221,12 +219,12 @@ mds_ch_update_table
 	mds_ch_mapping	#1,mds_psg_update		;7
 	mds_ch_mapping	#2,mds_psg_update		;8
 	mds_ch_mapping	#3,mds_psg_update		;9
-	mds_ch_mapping	#10,mds_ch_dummy		;a
-	mds_ch_mapping	#11,mds_ch_dummy		;b
-	mds_ch_mapping	#12,mds_ch_dummy		;c
-	mds_ch_mapping	#13,mds_ch_dummy		;d
-	mds_ch_mapping	#14,mds_ch_dummy		;e
-	mds_ch_mapping	#15,mds_ch_dummy		;f
+	mds_ch_mapping	#10,mds_dummy_update	;a
+	mds_ch_mapping	#11,mds_dummy_update	;b
+	mds_ch_mapping	#12,mds_dummy_update	;c
+	mds_ch_mapping	#13,mds_dummy_update	;d
+	mds_ch_mapping	#14,mds_dummy_update	;e
+	mds_ch_mapping	#15,mds_dummy_update	;f
 
 ;======================================================================
 ; Request track
@@ -1248,7 +1246,9 @@ mds_fm0_update
 
 	btst	#cf+cf_fm3_enable,flag
 	beq.s	@no_fm3_key_on						; TODO: fm3_keyon
-	rts
+
+	move.w	flag,t_note_flag(twork)
+	bra.w	mds_next_voice
 
 @no_fm3_key_on
 ;	btst	#cf+cf_pcm_control,flag				; TODO: pcm_keyon
@@ -1262,23 +1262,22 @@ mds_fm0_update
 	move.b	d0,1(@fm)							;12 : 24
 
 @no_key_on
-	rts
 
-mds_fm_key_on
-mds_fm_key_off
-mds_fm_ins
-mds_fm_vol
-mds_fm_pan_lfo
-	rts
+	move.w	flag,t_note_flag(twork)
+	bra.w	mds_next_voice
 
 ;======================================================================
 ; PSG update
 ;----------------------------------------------------------------------
 mds_psg_update
-mds_psg_key_on
-mds_psg_key_off
-mds_psg_ins
-mds_psg_vol
-	rts
+	move.w	flag,t_note_flag(twork)
+	bra.w	mds_next_voice
+
+;======================================================================
+; Dummy channel update (only check for FM3)
+;----------------------------------------------------------------------
+mds_dummy_update
+	move.w	flag,t_note_flag(twork)
+	bra.w	mds_next_voice
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:
