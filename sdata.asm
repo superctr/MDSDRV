@@ -93,7 +93,7 @@ bgm01:
 	dc.b	$00,$00,$70,$ff
 
 @T0
-	dc.b	ins,0,vol,$8f
-	dc.b	pta,50, en4,l4, en5,l4, en4,l4, pta,0, peg,2, en4,l2, peg,3, en4,l2, l2
+	dc.b	tempo,60,ins,0,vol,$8f
+	dc.b	pta,50, en4,l4, en5,l4, en4,l4, pta,0, peg,2, en4,l2, peg,3, en4,l1, l2
 	dc.b	finish
 ; vim: set ft=asm68k sw=4 ts=4 noet:

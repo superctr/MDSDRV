@@ -18,8 +18,8 @@ tmpa1	equr	a5
 tmpa2	equr	a6
 
 ; during request/track processing
-rnum	equr	d7							; request #
-flag	equr	d7
+rnum	equr	d7							; request #  (low word)
+flag	equr	d7							; flags      (high word)
 tnum	equr	d6							; track #
 tmask	equr	d5							; track mask
 
@@ -29,8 +29,8 @@ chnid	equr	d5							; channel id
 ;======================================================================
 ; note flags during voice processing (btst #nf+nf_enabled)
 ;======================================================================
-nf		equ		8
-cf		equ		0
+nf		equ		8+16
+cf		equ		0+16
 
 ;======================================================================
 ; note flags
@@ -149,6 +149,7 @@ w_sdtop			rs.l	1			;position of request table
 w_request		rs.w	RCOUNT		;sound request
 w_tempo			rs.w	RCOUNT
 w_counter		rs.w	RCOUNT		;tempo counter
+w_seq_step		rs.w	RCOUNT		;sequence step counter (modulo)
 w_volume		rs.w	RCOUNT
 w_tmask			rs.w	RCOUNT		;track mask
 w_chmask		rs.w	RCOUNT		;channel usage mask

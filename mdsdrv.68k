@@ -43,6 +43,8 @@ mds_init
 	move.l	@zero,2+w_tempo(work)
 	move.l	@zero,w_counter(work)			;clear counter
 	move.l	@zero,2+w_counter(work)
+	move.l	@zero,w_seq_step(work)			;clear seq step
+	move.l	@zero,2+w_seq_step(work)
 	move.l	@zero,w_volume(work)			;clear trk volume
 	move.l	@zero,2+w_volume(work)
 	move.l	@zero,w_tmask(work)				;clear trk mask
@@ -120,9 +122,11 @@ mds_halt
 ;   a1-a6, d0-d7
 mds_update
 @reqdata	equr	d0
-@counter	equr	d6
+@counter	equr	d0
+@seq_step	equr	d1
+@gtempo		equr	d2
 
-	clr.w	rnum
+	clr.l	rnum
 	lea		w_track(work),twork
 
 @next_request
@@ -137,14 +141,20 @@ mds_update
 	move.w	w_counter(work,rnum),@counter	;apply tempo
 	add.w	w_tempo(work,rnum),@counter
 	addq.w	#1,@counter
-	move.w	@counter,w_counter(work,rnum)
+
+	move.w	w_gtempo(work),@gtempo
+	clr.w	@seq_step
 
 @sequence_tick
-	sub.w	w_gtempo(work),@counter			;sequence tick
-	bcs.s	@request_done
+	cmp.w	@gtempo,@counter				;sequence tick
+	bcs.s	@tick_done
+	sub.w	@gtempo,@counter
+	addq.w	#1,@seq_step
+	bra.s	@sequence_tick
+
+@tick_done
+	move.w	@seq_step,w_seq_step(work,rnum)
 	move.w	@counter,w_counter(work,rnum)
-	pea		@sequence_tick(pc)
-	bra.w	mds_update_seq
 
 @request_done
 	addq	#2,rnum
@@ -159,14 +169,20 @@ mds_update_voices
 	stop_z80
 
 	lea		w_track(work),twork				; first track's addr
-	lea		w_chmask(work),tbase			; channel mask
+	lea		w_chmask(work),tpos				; channel mask
 	move.w	#TCOUNT-1,tnum
 
 mds_update_voices_loop
 	move.w	t_note_flag(twork),flag
-	bpl.s	mds_next_voice					;skip if not enabled
+	bpl.s	mds_next_voice2					;skip if not enabled
+	swap	flag
 
-	movea.l	tbase,tmpa0
+	move.b	t_request_id(twork),rnum	;update sequence if needed
+	move.w	w_seq_step(work,rnum),d4
+mds_update_seq_end
+	dbra	d4,mds_update_seq
+
+	movea.l	tpos,tmpa0
 	move.b	t_channel_id(twork),chnid		;check priority
 	move.b	t_request_id(twork),d0
 	rept	RCOUNT-1
@@ -189,8 +205,11 @@ mds_update_voices_loop
 	jmp		mds_ch_update_table(pc,d0)
 @no_priority
 	clr.w	t_last_pitch(twork)
-	ori.w	#nm_restore<<nf,t_note_flag(twork)
+	ori.l	#nm_restore<<nf,flag
 mds_next_voice
+	swap	flag
+	move.w	flag,t_note_flag(twork)
+mds_next_voice2
 	lea		TSIZE(twork),twork				; next track
 	dbra	tnum,mds_update_voices_loop
 
@@ -301,6 +320,7 @@ mds_start_song
 	move.w	@tempo,w_tempo(work,rnum)		;initial tempo
 	clr.w	@zero
 	move.w	@zero,w_counter(work,rnum)
+	move.w	@zero,w_seq_step(work,rnum)
 
 	lsl.w	#2,@reqdata						;request table
 	move.l	w_sdtop(work),tmpa0				;location of song header
@@ -362,7 +382,7 @@ mds_start_song
 ; update track sequences
 ;----------------------------------------------------------------------
 ; INPUT
-;   twork - track's working area
+;   twork,rnum - track's working area
 ; OUTPUT
 ;   -
 ; TRASHES
@@ -372,24 +392,8 @@ mds_update_seq
 @cmd		equr	d1
 @cmdlen		equr	d2
 @tempreg	equr	d3
-
-	lea		w_track(work),twork				; first track's addr
-	swap	tnum							; backup tempo counter
-	move.w	#TCOUNT-1,tnum
-	move.w	w_tmask(work,rnum),tmask
-
-@next_track
-	btst	tnum,tmask						; track enabled?
-	beq.s	@command_done
-
 	subq.b	#1,t_counter(twork)
-	bcs.s	@read_command					; counter overflow
-
-@command_done
-	lea		TSIZE(twork),twork				; next track
-	dbra	tnum,@next_track
-	swap	tnum							; restore tempo counter
-	rts
+	bcc.w	mds_update_seq_end
 
 ;----------------------------------------------------------------------
 ; command read loop
@@ -405,11 +409,11 @@ mds_update_seq
 	bmi.s	@cmd_80
 
 @cmd_rest
-	bset	#nf_key_off,t_note_flag(twork)
+	bset	#nf+nf_key_off,flag
 	move.b	@cmd,t_rest_time(twork)			;00-7f - rest
 	move.b	@cmd,t_counter(twork)
 	move.w	@trackpos,t_position(twork)
-	bra.s	@command_done
+	bra.w	mds_update_seq_end
 
 @cmd_80
 	sub.b	#$81,@cmd						;81 - tie
@@ -421,10 +425,10 @@ mds_update_seq
 
 	subq.b	#2,@cmd							;82-df - note
 	move.b	@cmd,t_note(twork)
-	bset	#nf_key_on,t_note_flag(twork)
-	btst	#nf_slur,t_note_flag(twork)
+	bset	#nf+nf_key_on,flag
+	btst	#nf+nf_slur,flag
 	bne.s	@cmd_tie
-	bset	#nf_key_off,t_note_flag(twork)
+	bset	#nf+nf_key_off,flag
 ;----------------------------------------------------------------------
 ; TODO: drum mode jump here
 ;----------------------------------------------------------------------
@@ -439,18 +443,18 @@ mds_update_seq
 	move.b	@cmd,(tmpa0)
 	addq.w	#1,@trackpos
 	move.w	@trackpos,t_position(twork)
-	bra.s	@command_done
+	bra.w	mds_update_seq_end
 
 @cmd_previous_delta
 	move.b	(tmpa0),t_counter(twork)
 	move.w	@trackpos,t_position(twork)
-	bra.s	@command_done
+	bra.w	mds_update_seq_end
 
 @cmd_rest2
-	bset	#nf_key_off,t_note_flag(twork)	;80 - rest 2
+	bset	#nf+nf_key_off,flag				;80 - rest 2
 	move.b	t_rest_time(twork),t_counter(twork)
 	move.w	@trackpos,t_position(twork)
-	bra.w	@command_done
+	bra.w	mds_update_seq_end
 
 @cmd_other
 	andi.w	#$1f,@cmd
@@ -501,8 +505,7 @@ mds_update_seq
 	move.b	t_stack_pos(twork),@cmd
 	bne		@cmd_return
 
-	ori.b	#nm_stop,t_note_flag(twork)
-	bset	#cf_inhibit,t_channel_flag(twork)
+	ori.l	#(nm_stop<<nf)|(cf_inhibit<<cf),flag
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
 
 	moveq	#-1,@tempreg					;clear channel mask
@@ -516,7 +519,7 @@ mds_update_seq
 
 	addq.w	#4,sp							;break out of command
 	move.w	@trackpos,t_position(twork)
-	bra.w	@command_done
+	bra.w	mds_update_seq_end
 
 @cmd_return
 	subq.b	#2,@cmd
@@ -529,7 +532,7 @@ mds_update_seq
 ; slr - set note slur
 ;----------------------------------------------------------------------
 @cmd_slr
-	bset	#nf_slur,t_note_flag(twork)
+	bset	#nf+nf_slur,flag
 	rts
 
 ;----------------------------------------------------------------------
@@ -541,14 +544,14 @@ mds_update_seq
 @cmd_ins
 	move.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_ins(twork)
-	bset	#nf_ins,t_note_flag(twork)
+	bset	#nf+nf_ins,flag
 	lsl.w	@cmd
 	movea.w	0(tbase,@cmd),tmpa0				; instr address
 	move.b	t_channel_id(twork),@cmd
 	cmpi.b	#6,@cmd							; fm or psg
 	bcc.s	@cmd_ins_psg
 	adda.l	w_sdtop(work),tmpa0				; ptr. to ins data
-	bset	#nf_key_off,t_note_flag(twork)
+	bset	#nf+nf_key_off,flag
 	move.l	24(tmpa0),t_fm_tl(twork)
 	move.b	28(tmpa0),t_fm_alg(twork)
 	move.b	29(tmpa0),t_ins_trs(twork)
@@ -564,12 +567,12 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_vol
 	move.b	0(tbase,@trackpos),t_vol(twork)
-	bset	#nf_vol,t_note_flag(twork)
+	bset	#nf+nf_vol,flag
 	rts
 @cmd_volm
 	move.b	0(tbase,@trackpos),@cmd
 	add.b	@cmd,t_vol(twork)
-	bset	#nf_vol,t_note_flag(twork)
+	bset	#nf+nf_vol,flag
 	rts
 
 ;----------------------------------------------------------------------
@@ -624,7 +627,7 @@ mds_update_seq
 	andi.b	#$c0,@cmd
 	or.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_fm_pan_lfo(twork)
-	bset	#nf_pan_lfo,t_note_flag(twork)
+	bset	#nf+nf_pan_lfo,flag
 	rts
 
 ;----------------------------------------------------------------------
@@ -638,7 +641,7 @@ mds_update_seq
 	andi.b	#$3f,@cmd
 	or.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_fm_pan_lfo(twork)
-	bset	#nf_pan_lfo,t_note_flag(twork)
+	bset	#nf+nf_pan_lfo,flag
 	rts
 
 ;----------------------------------------------------------------------
@@ -659,21 +662,23 @@ mds_update_seq
 	clr.w	@cmd
 	move.b	0(tbase,@trackpos),@cmd
 	bmi.s	@cmd_flg_fm3					; bit7 set = fm3 flags
-	btst	#4,@cmd							; bit4 set = set a flag
+	addi.b	#cf,@cmd
+	bclr	#4,@cmd							; bit4 set = set a flag
 	beq.s	@cmd_flg_off
-	bset	@cmd,t_channel_flag(twork)
+	addi.b	#cf,@cmd
+	bset	@cmd,flag
 	rts
 @cmd_flg_off
-	bclr	@cmd,t_channel_flag(twork)
+	addi.b	#cf,@cmd
+	bclr	@cmd,flag
 	rts
 @cmd_flg_fm3
-	tst.b	@cmd
 	beq.s	@cmd_flg_fm3_off
-	bset	#cf_fm3_enable,t_channel_flag(twork)
+	bset	#cf+cf_fm3_enable,flag
 	move.b	@cmd,t_fm3_mask(twork)	; we're reusing MSB of t_base_addr
 	rts
 @cmd_flg_fm3_off
-	bclr	#cf_fm3_enable,t_channel_flag(twork)
+	bclr	#cf+cf_fm3_enable,flag
 	rts
 
 ;----------------------------------------------------------------------
@@ -819,9 +824,9 @@ mds_get_fm_pitch
 	lsl.l	#8,d0
 	move.w	d0,d1							; upper bits of keycode
 	swap	d0
-	lea		mds_octave_table(pc),tmpa1
-	move.b	0(tmpa1,d0),d2					; octave
-	move.b	mds_note_table-mds_octave_table(tmpa1,d0),d0
+	lea		mds_note_table(pc),tmpa1
+	move.b	mds_octave_table-mds_note_table(tmpa1,d0),d2	; octave
+	move.b	0(tmpa1,d0),d0
 	add.b	t_ins_trs(twork),d0				;freq tab displacement
 	lea		@fm_freq_tab(pc,d0),tmpa1
 	move.w	2(tmpa1),d0
@@ -851,9 +856,9 @@ mds_get_psg_pitch
 	lsl.l	#8,d0
 	move.w	d0,d1							; upper bits of keycode
 	swap	d0
-	lea		mds_octave_table(pc),tmpa0
-	move.b	0(tmpa0,d0),d2					; octave
-	move.b	mds_note_table-mds_octave_table(tmpa0,d0),d0
+	lea		mds_note_table(pc),tmpa0
+	move.b	mds_octave_table-mds_note_table(tmpa0,d0),d2	; octave
+	move.b	0(tmpa0,d0),d0
 	lea		@psg_freq_tab(pc,d0),tmpa0
 	move.w	2(tmpa0),d0
 	sub.w	(tmpa0),d0
@@ -872,24 +877,35 @@ mds_get_psg_pitch
 ;----------------------------------------------------------------------
 ; note values are multiplied by 2 since they are likely going to be
 ; used as LUT indices
-mds_octave_table
-	dcb.b   12,0  ;0
-	dcb.b	12,8  ;12
-	dcb.b	12,16 ;24
-	dcb.b	12,24 ;36
-	dcb.b	12,32 ;48
-	dcb.b	12,40 ;60
-	dcb.b	12,48 ;72
-	dcb.b	12,56 ;84
+; Also the note table should come before the octave table, as the
+; entries in the octave_table protect against odd memory address
+; accesses.
 mds_note_table
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;0
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;12
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;24
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;36
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;48
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;60
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;72
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;84
+mds_octave_table
+	dcb.b   12,0  ;0  =0
+	dcb.b	12,8  ;12 =1
+	dcb.b	12,16 ;24 =2
+	dcb.b	12,24 ;36 =3
+	dcb.b	12,32 ;48 =4
+	dcb.b	12,40 ;60 =5
+	dcb.b	12,48 ;72 =6
+	dcb.b	12,56 ;84 =7
+; adding more octaves for PSG octave shift. It shouldn't matter that
+; the note_table is overflowing into octave_table at these octaves.
+	dcb.b	12,64 ;96 =8
+	dcb.b	12,72 ;108=9
+	dcb.b	12,80 ;120=10
+; these bytes are just to pad the note_table, but it can be repurposed
+; as long as the data just contains even 8-bit numbers
+	dcb.b	256-(96+132),88
 
 ;======================================================================
 ; PSG envelope initialize
@@ -913,6 +929,7 @@ mds_ch_dummy
 ; TRASHES
 ;  tmpa1,d1,d2,d3,d4
 mds_pitch_update
+	moveq	#0,d0
 	move.b	t_note(twork),d1
 	add.b	t_trs(twork),d1
 	lsl.w	#8,d1
@@ -1247,7 +1264,6 @@ mds_fm0_update
 	btst	#cf+cf_fm3_enable,flag
 	beq.s	@no_fm3_key_on						; TODO: fm3_keyon
 
-	move.w	flag,t_note_flag(twork)
 	bra.w	mds_next_voice
 
 @no_fm3_key_on
@@ -1263,21 +1279,18 @@ mds_fm0_update
 
 @no_key_on
 
-	move.w	flag,t_note_flag(twork)
 	bra.w	mds_next_voice
 
 ;======================================================================
 ; PSG update
 ;----------------------------------------------------------------------
 mds_psg_update
-	move.w	flag,t_note_flag(twork)
 	bra.w	mds_next_voice
 
 ;======================================================================
 ; Dummy channel update (only check for FM3)
 ;----------------------------------------------------------------------
 mds_dummy_update
-	move.w	flag,t_note_flag(twork)
 	bra.w	mds_next_voice
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:
