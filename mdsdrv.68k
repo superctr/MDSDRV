@@ -177,16 +177,13 @@ mds_update_voices
 		subq.b	#2,d0						;next request
 	endr
 @has_priority
-	clr.w	d0
 	bclr	#nf+nf_silence,flag
 	beq.s	@no_silence
-; TODO: re-enable channel - set flags here
-; channel was disabled and now re-enabled
 	bclr	#nf+nf_enabled,flag
 @no_silence
 	move.b	chnid,d0
-	bclr	#0,d0
-	lsl.b	d0
+	andi.w	#0x000e,d0
+	add.b	d0,d0
 	pea		@track_done(pc)
 	jmp		mds_ch_update_table(pc,d0)
 @no_priority
@@ -275,6 +272,7 @@ mds_start_song
 @reqdata	equr	d0						;request id
 @tempo		equr	d1						;global tempo
 @zero		equr	d1
+@tempreg	equr	d2
 
 	bclr	#15,@reqdata
 	move.w	@reqdata,w_request(work,rnum)	;clear request flag
@@ -314,7 +312,10 @@ mds_start_song
 	or.w	rnum,@reqdata
 	move.w	@reqdata,t_channel_id(twork)
 
-	bset	@reqdata,w_chmask(work,rnum)
+	clr.w	@tempreg						;allocate channel
+	bset	@reqdata,@tempreg
+	or.w	@tempreg,w_chmask(work,rnum)
+
 	cmp.w	#ct_psg<<8,@reqdata
 	bcs.s	@not_psg
 
@@ -490,9 +491,16 @@ mds_update_seq
 	ori.b	#nm_stop,t_note_flag(twork)
 	bset	#cf_inhibit,t_channel_flag(twork)
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
-	bclr	tnum,w_tmask(work,rnum)			;disable track
+
+	moveq	#-1,@tempreg					;clear channel mask
+	bclr	tnum,@tempreg
+	and.w	@tempreg,w_tmask(work,rnum)
+
+	moveq	#-1,@tempreg					;deallocate channel
 	move.b	t_channel_id(twork),@cmd
-	bclr	@cmd,w_chmask(work,rnum)		;deallocate channel
+	bclr	@cmd,@tempreg
+	and.w	@tempreg,w_chmask(work,rnum)
+
 	addq.w	#4,sp							;break out of command
 	move.w	@trackpos,t_position(twork)
 	bra.w	@command_done
