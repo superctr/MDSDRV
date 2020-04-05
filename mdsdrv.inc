@@ -3,7 +3,7 @@
 ;======================================================================
 RCOUNT			equ		4			; request count
 TCOUNT			equ		16			; track count
-TSTACK_COUNT	equ		10
+TSTACK_COUNT	equ		10			; stack size (in words)
 
 ;======================================================================
 ; register define
