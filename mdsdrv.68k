@@ -279,7 +279,6 @@ mds_stop_song
 	btst	tnum,tmask						;track id
 	beq.w	@skip_track
 	ori.b	#nm_stop,t_note_flag(twork)
-	bset	#cf_inhibit,t_channel_flag(twork)
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
 
 @skip_track
@@ -519,7 +518,7 @@ mds_update_seq
 	move.b	t_stack_pos(twork),@cmd
 	bne		@cmd_return
 
-	ori.l	#(nm_stop<<nf)|(1<<(cf+cf_inhibit)),flag
+	ori.l	#(nm_stop<<nf),flag
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
 
 	moveq	#-1,@tempreg					;clear channel mask

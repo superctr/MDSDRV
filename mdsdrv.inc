@@ -49,12 +49,10 @@ nf_enabled		rs.b	1			; envelopes enabled(must be bit7!)
 ; channel flags
 ;======================================================================
 	rsreset
-cf_fm3_enable	rs.b	1			; fm3 mode enabled
 cf_drum_mode	rs.b	1			; drum mode enabled
-cf_drum_mode_on	rs.b	1			; inside drum mode routine
+cf_fm3_enable	rs.b	1			; fm3 mode enabled
 cf_psg3_control	rs.b	1			; write fnum to psg3
 cf_pcm_control	rs.b	1			; pcm instrument loaded
-cf_inhibit		rs.b	1			; free
 
 ;======================================================================
 ; flag bitmasks
