@@ -429,9 +429,9 @@ mds_update_seq
 	btst	#nf+nf_slur,flag
 	bne.s	@cmd_tie
 	bset	#nf+nf_key_off,flag
-;----------------------------------------------------------------------
-; TODO: drum mode jump here
-;----------------------------------------------------------------------
+	btst	#cf+cf_drum_mode,flag			;drum mode on?
+	bne.s	@cmd_drum_mode
+
 @cmd_tie
 	lea		t_note_time(twork),tmpa0
 @cmd_read_delta
@@ -463,6 +463,18 @@ mds_update_seq
 	lsl.b	#2,@cmd
 	pea		@next_command(pc)
 	jmp		@cmd_table(pc,@cmd)
+
+@cmd_drum_mode
+	andi.w	#$00ff,@cmd
+	clr.w	@tempreg
+	move.b	t_stack_pos(twork),@tempreg			; push current pos
+	move.w	@trackpos,t_stack(twork,@tempreg)
+	addq.b	#2,@tempreg
+	move.b	@tempreg,t_stack_pos(twork)
+	lsl.w	#1,@cmd								; get subroutine pos
+	move.w	0(tbase,@cmd),@trackpos
+	moveq	#1,@cmdlen
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; command table
@@ -503,6 +515,7 @@ mds_update_seq
 	bra.w	@cmd_lpbl						;fd loop break 2
 	bra.w	@cmd_pat						;fe subroutine
 @cmd_finish									;ff finish
+	clr.w	@cmd
 	move.b	t_stack_pos(twork),@cmd
 	bne		@cmd_return
 
@@ -663,8 +676,7 @@ mds_update_seq
 	clr.w	@cmd
 	move.b	0(tbase,@trackpos),@cmd
 	bmi.s	@cmd_flg_fm3					; bit7 set = fm3 flags
-	addi.b	#cf,@cmd
-	bclr	#4,@cmd							; bit4 set = set a flag
+	bclr	#3,@cmd							; bit3 set = set a flag
 	beq.s	@cmd_flg_off
 	addi.b	#cf,@cmd
 	bset	@cmd,flag
@@ -717,6 +729,7 @@ mds_update_seq
 ; lp - loop start
 ;----------------------------------------------------------------------
 @cmd_lp
+	clr.w	@cmd
 	move.b	t_stack_pos(twork),@cmd
 	move.b	#$ff,t_stack(twork,@cmd)
 	move.w	@trackpos,2+t_stack(twork,@cmd)
@@ -729,6 +742,7 @@ mds_update_seq
 ; lpf - loop finish
 ;----------------------------------------------------------------------
 @cmd_lpf
+	clr.w	@cmd
 	move.b	t_stack_pos(twork),@cmd
 	subq.b	#4,@cmd
 	move.b	t_stack(twork,@cmd),@tempreg
@@ -747,6 +761,7 @@ mds_update_seq
 ; lpb - loop break
 ;----------------------------------------------------------------------
 @cmd_lpb
+	clr.w	@cmd
 	move.b	t_stack_pos(twork),@cmd
 	subq.b	#4,@cmd  ;optimize with stack-4?
 	cmpi.b	#1,t_stack(twork,@cmd)
@@ -760,6 +775,7 @@ mds_update_seq
 ; lpbl - loop break (long)
 ;----------------------------------------------------------------------
 @cmd_lpbl
+	clr.w	@cmd
 	move.b	t_stack_pos(twork),@cmd
 	subq.b	#4,@cmd
 	tst.b	t_stack(twork,@cmd)
@@ -775,21 +791,30 @@ mds_update_seq
 ; pat - subroutine
 ;----------------------------------------------------------------------
 @cmd_pat
-	move.b	t_stack_pos(twork),@cmd
+	clr.w	@cmd
+	move.b	t_stack_pos(twork),@cmd				; push current pos
 	addq.w	#2,@trackpos
 	move.w	@trackpos,t_stack(twork,@cmd)
 	addq.b	#2,@cmd
 	move.b	@cmd,t_stack_pos(twork)
-	move.b	-2(tbase,@trackpos),@cmd
+	clr.w	@cmd
+	move.b	-2(tbase,@trackpos),@cmd			; get subroutine pos
 	lsl.w	#1,@cmd
-	move.w	0(tbase,@cmd),@trackpos				; subroutine address
+	move.w	0(tbase,@cmd),@trackpos
 	rts
 
 ;----------------------------------------------------------------------
 ; dmfinish - drum mode finish byte
 ;----------------------------------------------------------------------
 @cmd_dmfinish
-	rts
+	clr.w	@cmd
+	move.b	0(tbase,@trackpos),t_note(twork)
+	move.b	t_stack_pos(twork),@cmd
+	subq.b	#2,@cmd
+	move.b	@cmd,t_stack_pos(twork)
+	move.w	t_stack(twork,@cmd),@trackpos		; pop return address
+	addq.w	#4,sp								;break out of command
+	bra.w	@cmd_tie
 
 ;======================================================================
 ; check channel priority

@@ -6,13 +6,15 @@ sdcnt:
 sdtop:
 	rsreset
 SOUND_00	rs.b	1
-	dc.l	bgm00-sdtop			;bgm 00
+	dc.l	bgm00-sdtop			;bgm 01
 SOUND_01	rs.b	1
-	dc.l	bgm01-sdtop			;bgm 00
+	dc.l	bgm01-sdtop			;bgm 02
 SOUND_02	rs.b	1
-	dc.l	bgm02-sdtop			;bgm 00
+	dc.l	bgm02-sdtop			;bgm 03
 SOUND_03	rs.b	1
-	dc.l	bgm03-sdtop			;bgm 00
+	dc.l	bgm03-sdtop			;bgm 04
+SOUND_04	rs.b	1
+	dc.l	bgm04-sdtop			;bgm 05
 SOUND_MAX	rs.b	0
 
 SD_FM_00
@@ -122,6 +124,39 @@ bgm02:
 @T0
 	dc.b	tempo,60,ins,0,vol,$8f
 	dc.b	pat, @PAT_0, cn5, rest, l4, finish
+	even
+
+;====================================================================
+;  test bgm 05 - drum mode test
+;====================================================================
+bgm04:
+@TTAB
+	dc.w	@BASE-@TTAB			;offset to song base
+	dc.w	$8000				;track enable mask
+	dc.w	$0000,@T0-@BASE		;channel select(hi) channel flags(lo), track position
+
+@BASE:
+	rsreset
+@FM_0		rs.b	1
+	dc.w	SD_FM_00-sdtop
+@PSG_0		rs.b	1
+	dc.w	SD_PSG_00-sdtop
+@PEG_0		rs.b	1
+	dc.w	SD_PEG_00-sdtop
+@D_0		rs.b	1
+	dc.w	@D0-@BASE
+@D_1		rs.b	1
+	dc.w	@D1-@BASE
+
+@D0
+	dc.b	pan,$40, dmfinish,cn4-cn1
+
+@D1
+	dc.b	pan,$80, dmfinish,cn4-cn1
+
+@T0
+	dc.b	tempo,60,ins,0,vol,$8f,flg,8+cf_drum_mode
+	dc.b	cn1+@D_0,l8,  cn1+@D_1,l4,   cn1+@D_0,l2,  cn1+@D_0,  cn1+@D_1,l4,  cn1+@D_1, finish
 	even
 
 
