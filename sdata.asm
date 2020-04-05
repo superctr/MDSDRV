@@ -15,6 +15,8 @@ SOUND_03	rs.b	1
 	dc.l	bgm03-sdtop			;bgm 04
 SOUND_04	rs.b	1
 	dc.l	bgm04-sdtop			;bgm 05
+SOUND_05	rs.b	1
+	dc.l	bgm05-sdtop			;bgm 05
 SOUND_MAX	rs.b	0
 
 SD_FM_00
@@ -159,6 +161,32 @@ bgm04:
 	dc.b	cn1+@D_0,l8,  cn1+@D_1,l4,   cn1+@D_0,l2,  cn1+@D_0,  cn1+@D_1,l4,  cn1+@D_1, finish
 	even
 
+;====================================================================
+;  test bgm 06 - psg test
+;====================================================================
+bgm05:
+@TTAB
+	dc.w	@BASE-@TTAB			;offset to song base
+	dc.w	$8000				;track enable mask
+	dc.w	$0600,@T0-@BASE		;channel select(hi) channel flags(lo), track position
+
+@BASE:
+	rsreset
+
+@PSG_0		rs.b	1
+	dc.w	@PSG_0D-sdtop
+
+@PSG_0D
+	dc.b	$10,$21,$32,$43,$01,$98,$a9,$ba,$cb,$00
+
+	even
+@T0
+	dc.b	tempo,60,ins,0,vol,$8f
+	dc.b	cn4,l8,l8,dn4,l4,en4,l2,fn4,l2,l2
+	dc.b	finish
+
+	even
+
 
 ;====================================================================
 ;  test bgm 04 - music (Please don't sue me, SNK)
@@ -246,9 +274,6 @@ bgm03:
 	dc.b	an5,volm,10,tie,volm,-8,dn6,volm,10,tie,volm,-8,pan,$80
 	dc.b	en6,volm,10,tie,volm,-8,an6,volm,10,tie,volm,-8,pan,$c0
 	dc.b	l2,finish
-
-@PEG_1D
-	dc.b	$00,$00,$70,$ff
 
 @T0
 	dc.b	tempo,$75

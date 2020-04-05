@@ -204,7 +204,7 @@ mds_update_seq_end
 	add.b	chnid,d0
 	jmp		mds_ch_update_table(pc,d0)
 @no_priority
-	clr.w	t_last_pitch(twork)
+	st		t_last_pitch(twork)
 	ori.l	#nm_restore<<nf,flag
 mds_next_voice
 	swap	flag
@@ -234,10 +234,10 @@ mds_ch_update_table
 	mds_ch_mapping	#4,mds_fm1_update		;3
 	mds_ch_mapping	#5,mds_fm1_update		;4
 	mds_ch_mapping	#6,mds_fm1_update		;5
-	mds_ch_mapping	#0,mds_psg_update		;6
-	mds_ch_mapping	#1,mds_psg_update		;7
-	mds_ch_mapping	#2,mds_psg_update		;8
-	mds_ch_mapping	#3,mds_psg_update		;9
+	mds_ch_mapping	#-128,mds_psg_update	;6
+	mds_ch_mapping	#-96,mds_psg_update		;7
+	mds_ch_mapping	#-64,mds_psg_update		;8
+	mds_ch_mapping	#-32,mds_psgn_update	;9
 	mds_ch_mapping	#10,mds_dummy_update	;a
 	mds_ch_mapping	#11,mds_dummy_update	;b
 	mds_ch_mapping	#12,mds_dummy_update	;c
@@ -359,7 +359,7 @@ mds_start_song
 	move.b	#$c0,t_fm_pan_lfo(twork)		;initial panning
 
 @not_fm
-	move.w	@zero,t_last_pitch(twork)		;previous pitch
+	st		t_last_pitch(twork)				;previous pitch
 	move.w	@zero,t_note(twork)				;note/transpose
 	move.w	@zero,t_trs(twork)				;transpose/portamento
 	move.w	#$8f00,t_vol(twork)				;vol/lfo_delay
@@ -672,6 +672,7 @@ mds_update_seq
 ; 80-8F - ch3 mask set
 ;----------------------------------------------------------------------
 @cmd_flg
+	st		t_last_pitch(twork)				; force pitch update
 	clr.w	@cmd
 	move.b	0(tbase,@trackpos),@cmd
 	bmi.s	@cmd_flg_fm3					; bit7 set = fm3 flags
@@ -893,7 +894,7 @@ mds_get_psg_pitch
 	swap	d0
 	add.w	(tmpa0),d0
 	lsr.b	#3,d2
-	lsr.l	d2,d0							;octave shifted
+	lsr.w	d2,d0							;octave shifted
 	rts
 @psg_freq_tab
 	dc.w	851,803,758,715,675,637,601,568,536,506,477,450,425
@@ -1308,9 +1309,171 @@ mds_fm0_update
 	bra.w	mds_next_voice
 
 ;======================================================================
+; PSG envelope update
+;----------------------------------------------------------------------
+mds_psg_update_env
+@pos	equr	d1
+@cmd	equr	d0
+
+	tst.l	flag								; enable flag cleared?
+	bpl.w	@silence
+
+;----------------------------------------------------------------------
+; key on
+;----------------------------------------------------------------------
+	btst	#nf+nf_key_on,flag
+	beq.s	@no_keyon
+
+	move.l	#(1<<(nf+nf_slur))+(1<<(cf+cf_fm3_enable)),@cmd
+	and.l	flag,@cmd
+	bne.s	@no_keyon
+
+	moveq	#$1f,@cmd								;silence
+	move.w	@cmd,t_psg_eg_pos(twork)
+	andi.l	#~((1<<(nf+nf_key_on))+(1<<(nf+nf_key_off))),flag
+
+	st		t_last_pitch(twork)	; Always rewrite pitch after PSG keyon
+	bra.s	@command
+
+@no_keyon
+;----------------------------------------------------------------------
+; envelope disable
+;----------------------------------------------------------------------
+	btst	#nf+nf_key_off,flag					;skip delays for keyoff
+	bne.s	@command
+	move.b	t_psg_eg_delay(twork),@cmd
+	beq.s	@hold
+
+;----------------------------------------------------------------------
+; envelope delay
+;----------------------------------------------------------------------
+	cmpi.b	#$20,@cmd
+	bcs.s	@command
+
+	subi.b	#$10,@cmd
+	move.b	@cmd,t_psg_eg_delay(twork)
+@hold
+	bclr	#nf+nf_vol,flag
+	bne.s	@write_vol
+	rts
+
+@command
+;----------------------------------------------------------------------
+; read command
+;----------------------------------------------------------------------
+	clr.w	@pos
+	move.b	t_psg_eg_pos(twork),@pos
+	move.w	t_psg_eg_addr(twork),tmpa1
+	adda.l	w_sdtop(work),tmpa1
+	move.b	0(tmpa1,@pos),@cmd
+	addq.b	#1,@pos
+
+;----------------------------------------------------------------------
+; sustain command
+;----------------------------------------------------------------------
+	bclr	#nf+nf_key_off,flag
+	beq.s	@no_release
+	cmpi.b	#$01,@cmd
+	bne.s	@no_jump							; key off can't jump
+	bra.s	@read_next
+
+@no_release
+	cmpi.b	#$01,@cmd
+	bne.s	@no_sustain							; sustain hold
+	clr.b	t_psg_eg_delay(twork)
+	bra.s	@hold
+
+@no_sustain
+;----------------------------------------------------------------------
+; jump command
+;----------------------------------------------------------------------
+	cmpi.b	#$02,@cmd
+	bne.s	@no_jump
+	move.b	0(tmpa1,@pos),@pos
+
+@read_next
+	move.b	0(tmpa1,@pos),@cmd
+	addq.b	#1,@pos
+
+@no_jump
+;----------------------------------------------------------------------
+; volume + length command
+;----------------------------------------------------------------------
+	cmpi.b	#$10,@cmd
+	bcc.b	@no_silence
+@silence
+	clr.b	t_psg_eg_delay(twork)		; disable envelope for now
+	bclr	#nf+nf_key_off,flag
+	moveq	#$1f,@cmd
+	or.b	chnid,@cmd
+	move.b	@cmd,sound_psg
+	rts
+
+@no_silence
+	lsl.w	#8,@pos
+	move.b	@cmd,@pos
+	move.w	@pos,t_psg_eg_pos(twork)	; write both at the same time
+
+;----------------------------------------------------------------------
+; It's very likely that this must be rewritten once global volume and
+; fadeout is supported, and the FM->PSG volume conversion could be done
+; at that point.
+;----------------------------------------------------------------------
+@tvol	equr	d1
+@evol	equr	d0
+
+@write_vol
+	moveq	#15,d2
+	move.b	t_vol(twork),@tvol
+	not.b	@tvol
+	and.b	d2,@tvol
+	and.b	d2,@evol
+	add.b	@evol,@tvol
+	cmp.b	d2,@tvol
+	bcs.s	@no_clamp
+	move.b	d2,@tvol
+@no_clamp
+	ori.b	#$10,@tvol
+	or.b	chnid,@tvol
+	move.b	@tvol,sound_psg
+	rts
+
+;======================================================================
 ; PSG update
 ;----------------------------------------------------------------------
 mds_psg_update
+	bsr.w	mds_psg_update_env
+	bsr.w	mds_pitch_update
+	cmp.w	t_last_pitch(twork),d0
+	beq.w	mds_next_voice
+	move.w	d0,t_last_pitch(twork)
+mds_psg_set_pitch
+	bsr.w	mds_get_psg_pitch
+	move.b	d0,d1
+	andi.b	#$0f,d1
+	or.b	chnid,d1
+	move.b	d1,sound_psg
+	lsr.w	#4,d0
+	move.b	d0,sound_psg
+	bra.w	mds_next_voice
+
+;======================================================================
+; PSG noise update
+;----------------------------------------------------------------------
+mds_psgn_update
+	bsr.w	mds_psg_update_env
+	bsr.w	mds_pitch_update
+
+	cmp.w	t_last_pitch(twork),d0
+	beq.w	mds_next_voice
+	move.w	d0,t_last_pitch(twork)
+	move.b	#$c0,chnid							;set psg3 chnid!
+	btst	#cf+cf_psg3_control,flag
+	bne.s	mds_psg_set_pitch
+	ror.w	#8,d0
+	andi.b	#$0f,d0
+	ori.b	#$e0,d0
+	move.b	d0,sound_psg
 	bra.w	mds_next_voice
 
 ;======================================================================
