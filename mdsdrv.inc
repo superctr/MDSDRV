@@ -125,18 +125,19 @@ TSIZE			rs.b	0
 ; FM type
 ;----------------------------------------------------------------------
 	rsset		t_type
-t_fm_tl			rs.b	4			; operator TL values
+t_fm_pan_lfo	rs.b	1			; panning/lfo (must be pos. 0)
 t_fm_alg		rs.b	1			; algorithm nr.
-t_fm_pan_lfo	rs.b	1			; panning/lfo
+t_fm_tl			rs.b	4			; operator TL values
 T_FMSIZE		rs.b	0
 
 ;----------------------------------------------------------------------
 ; PSG type
 ;----------------------------------------------------------------------
 	rsset		t_type
-t_psg_eg_addr	rs.l	1			; envelope base address
+t_psg_eg_addr	rs.w	1			; envelope base address
 t_psg_eg_pos	rs.b	1			; envelope position
 t_psg_eg_delay	rs.b	1			; envelope value & delay
+t_psg_nmode		rs.b	1			; noise mode
 T_PSGSIZE		rs.b	0
 
 ;======================================================================

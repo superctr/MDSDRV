@@ -351,6 +351,7 @@ mds_start_song
 	cmp.w	#ct_psg<<8,@reqdata
 	bcs.s	@not_psg
 
+	move.b	@zero,t_psg_nmode(twork)		;noise mode initialize
 	move.l	tmpa1,t_psg_eg_addr(twork)		;psg eg initialize
 	move.w	#$000f,t_psg_eg_pos(twork)
 	bra.s	@not_fm
@@ -650,11 +651,28 @@ mds_update_seq
 ; bit 3-5 = AM sensitivity
 ;----------------------------------------------------------------------
 @cmd_lfo
+	move.b	t_channel_id(twork),@cmd
+	cmpi.b	#6,@cmd							; fm or psg
+	bcc.s	@cmd_nmode
+
 	move.b	t_fm_pan_lfo(twork),@cmd
 	andi.b	#$c0,@cmd
 	or.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_fm_pan_lfo(twork)
 	bset	#nf+nf_pan_lfo,flag
+	rts
+
+;----------------------------------------------------------------------
+; nmode - set noise mode
+;----------------------------------------------------------------------
+; 00 - use key code
+; e3 - periodic noise, psg3 control
+; e7 - white noise, psg3 control
+;----------------------------------------------------------------------
+@cmd_nmode
+	st		t_last_pitch(twork)
+	move.b	0(tbase,@trackpos),@cmd
+	move.b	@cmd,t_psg_nmode(twork)
 	rts
 
 ;----------------------------------------------------------------------
@@ -1463,15 +1481,19 @@ mds_psg_set_pitch
 mds_psgn_update
 	bsr.w	mds_psg_update_env
 	bsr.w	mds_pitch_update
-
 	cmp.w	t_last_pitch(twork),d0
 	beq.w	mds_next_voice
 	move.w	d0,t_last_pitch(twork)
-	move.b	#$c0,chnid							;set psg3 chnid!
-	btst	#cf+cf_psg3_control,flag
-	bne.s	mds_psg_set_pitch
+	move.b	t_psg_nmode(twork),d1
+	beq.s	@no_psg3_control
+
+	move.b	d1,sound_psg						; set noise mode
+	move.b	#$c0,chnid							; set psg3 chnid
+	bra.s	mds_psg_set_pitch
+
+@no_psg3_control
 	ror.w	#8,d0
-	andi.b	#$0f,d0
+	andi.b	#$07,d0
 	ori.b	#$e0,d0
 	move.b	d0,sound_psg
 	bra.w	mds_next_voice

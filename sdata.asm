@@ -17,6 +17,8 @@ SOUND_04	rs.b	1
 	dc.l	bgm04-sdtop			;bgm 05
 SOUND_05	rs.b	1
 	dc.l	bgm05-sdtop			;bgm 05
+SOUND_06	rs.b	1
+	dc.l	bgm06-sdtop			;bgm 06
 SOUND_MAX	rs.b	0
 
 SD_FM_00
@@ -184,9 +186,33 @@ bgm05:
 	dc.b	tempo,60,ins,0,vol,$8f
 	dc.b	cn4,l8,l8,dn4,l4,en4,l2,fn4,l2,l2
 	dc.b	finish
-
 	even
 
+;====================================================================
+;  test bgm 07 - psg noise test
+;====================================================================
+bgm06:
+@TTAB
+	dc.w	@BASE-@TTAB			;offset to song base
+	dc.w	$8000				;track enable mask
+	dc.w	$0900,@T0-@BASE		;channel select(hi) channel flags(lo), track position
+
+@BASE:
+	rsreset
+
+@PSG_0		rs.b	1
+	dc.w	@PSG_0D-sdtop
+
+@PSG_0D
+	dc.b	$30,$32,$34,$36,$38,$3A,$3C,$3E,$00
+	even
+@T0
+	dc.b	tempo,60,ins,0,vol,$8f
+	dc.b	lfo,$00, cn1,l4,cs1,dn1,ds1,en1,fn1,fs1,gn1
+	dc.b	lfo,$e7, cn1,l4,cn2,cn3,cn4,cn5,cn6,cn7,cn8
+	dc.b	lfo,$e3, cn8
+	dc.b	finish
+	even
 
 ;====================================================================
 ;  test bgm 04 - music (Please don't sue me, SNK)
@@ -209,6 +235,10 @@ bgm03:
 	dc.w	@P0-@BASE
 @PAT_1		rs.b	1
 	dc.w	@P1-@BASE
+@PAT_2		rs.b	1
+	dc.w	@P2-@BASE
+@PAT_3		rs.b	1
+	dc.w	@P3-@BASE
 
 @FM_0D
 	dc.b	$33,$74,$78,$30
@@ -230,51 +260,54 @@ bgm03:
 	dc.b	$0c,$30
 
 @P0
-	dc.b	gn6,l8d,volm,8,tie,volm,-8
-	dc.b	en6,    volm,8,tie,volm,-8
-	dc.b	bn6,l8, volm,8,tie,volm,-8
-	dc.b	an6,    volm,2,tie,volm,2,tie,volm,2,tie,volm,2,tie,volm,2,tie,volm,2,tie,volm,2,tie,volm,-14
-	dc.b	cn7,l8d,volm,8,tie,volm,-8
-	dc.b	bn6,    volm,8,tie,volm,-8
-	dc.b	gn6,l8, volm,8,tie,volm,-8
-	dc.b	an6,    volm,3,tie,volm,3,tie,volm,3,tie,volm,3,tie,volm,3,tie,volm,3,tie,volm,3,tie
+	dc.b	gn6,l8d,pat,@PAT_2
+	dc.b	en6,    pat,@PAT_2
+	dc.b	bn6,l8, pat,@PAT_2
+	dc.b	an6,    lp,volm,2,tie,lpf,7,volm,-14
+	dc.b	cn7,l8d,pat,@PAT_2
+	dc.b	bn6,    pat,@PAT_2
+	dc.b	gn6,l8, pat,@PAT_2
+	dc.b	an6,    lp,volm,3,tie,lpf,7
 	dc.b	rest,l2,finish
 @P1
 	dc.b	gn5,l32
-	dc.b		volm,8, tie,volm,-8,cn6,volm,8, tie,volm,-8,pan,$40
-	dc.b	dn6,volm,8, tie,volm,-8,fn6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	gn6,volm,8, tie,volm,-8,fn6,volm,8, tie,volm,-8,pan,$80
-	dc.b	dn6,volm,8, tie,volm,-8,cn6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	dn6,volm,8, tie,volm,-8,gn5,volm,8, tie,volm,-8,pan,$40
-	dc.b	cn6,volm,8, tie,volm,-8,dn6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	dn6,volm,8, tie,volm,-8,gn5,volm,8, tie,volm,-8,pan,$80
-	dc.b	cn6,volm,8, tie,volm,-8,dn6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	an5,volm,8, tie,volm,-8,dn6,volm,8, tie,volm,-8,pan,$40
-	dc.b	en6,volm,8, tie,volm,-8,gn6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	an6,volm,8, tie,volm,-8,gn6,volm,8, tie,volm,-8,pan,$80
-	dc.b	en6,volm,8, tie,volm,-8,dn6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	en6,volm,8, tie,volm,-8,an5,volm,8, tie,volm,-8,pan,$40
-	dc.b	dn6,volm,8, tie,volm,-8,en6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	en6,volm,8, tie,volm,-8,an5,volm,8, tie,volm,-8,pan,$80
-	dc.b	dn6,volm,8, tie,volm,-8,en6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	cn6,volm,8, tie,volm,-8,en6,volm,8, tie,volm,-8,pan,$40
-	dc.b	gn6,volm,8, tie,volm,-8,bf6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	cn7,volm,8, tie,volm,-8,bf6,volm,8, tie,volm,-8,pan,$80
-	dc.b	gn6,volm,8, tie,volm,-8,en6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	bf6,volm,8, tie,volm,-8,cn6,volm,8, tie,volm,-8,pan,$40
-	dc.b	en6,volm,8, tie,volm,-8,gn6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	bf6,volm,8, tie,volm,-8,cn6,volm,8, tie,volm,-8,pan,$80
-	dc.b	en6,volm,8, tie,volm,-8,gn6,volm,8, tie,volm,-8,pan,$c0
-	dc.b	an5,volm,8, tie,volm,-8,dn6,volm,10,tie,volm,-8,pan,$40
-	dc.b	en6,volm,10,tie,volm,-8,an6,volm,10,tie,volm,-8,pan,$c0
-	dc.b	an5,volm,10,tie,volm,-8,dn6,volm,10,tie,volm,-8,pan,$80
-	dc.b	en6,volm,10,tie,volm,-8,an6,volm,10,tie,volm,-8,pan,$c0
-	dc.b	an5,volm,10,tie,volm,-8,dn6,volm,10,tie,volm,-8,pan,$40
-	dc.b	en6,volm,10,tie,volm,-8,an6,volm,10,tie,volm,-8,pan,$c0
-	dc.b	an5,volm,10,tie,volm,-8,dn6,volm,10,tie,volm,-8,pan,$80
-	dc.b	en6,volm,10,tie,volm,-8,an6,volm,10,tie,volm,-8,pan,$c0
+	dc.b		pat,@PAT_2,cn6,pat,@PAT_2,pan,$40
+	dc.b	dn6,pat,@PAT_2,fn6,pat,@PAT_2,pan,$c0
+	dc.b	gn6,pat,@PAT_2,fn6,pat,@PAT_2,pan,$80
+	dc.b	dn6,pat,@PAT_2,cn6,pat,@PAT_2,pan,$c0
+	dc.b	dn6,pat,@PAT_2,gn5,pat,@PAT_2,pan,$40
+	dc.b	cn6,pat,@PAT_2,dn6,pat,@PAT_2,pan,$c0
+	dc.b	dn6,pat,@PAT_2,gn5,pat,@PAT_2,pan,$80
+	dc.b	cn6,pat,@PAT_2,dn6,pat,@PAT_2,pan,$c0
+	dc.b	an5,pat,@PAT_2,dn6,pat,@PAT_2,pan,$40
+	dc.b	en6,pat,@PAT_2,gn6,pat,@PAT_2,pan,$c0
+	dc.b	an6,pat,@PAT_2,gn6,pat,@PAT_2,pan,$80
+	dc.b	en6,pat,@PAT_2,dn6,pat,@PAT_2,pan,$c0
+	dc.b	en6,pat,@PAT_2,an5,pat,@PAT_2,pan,$40
+	dc.b	dn6,pat,@PAT_2,en6,pat,@PAT_2,pan,$c0
+	dc.b	en6,pat,@PAT_2,an5,pat,@PAT_2,pan,$80
+	dc.b	dn6,pat,@PAT_2,en6,pat,@PAT_2,pan,$c0
+	dc.b	cn6,pat,@PAT_2,en6,pat,@PAT_2,pan,$40
+	dc.b	gn6,pat,@PAT_2,bf6,pat,@PAT_2,pan,$c0
+	dc.b	cn7,pat,@PAT_2,bf6,pat,@PAT_2,pan,$80
+	dc.b	gn6,pat,@PAT_2,en6,pat,@PAT_2,pan,$c0
+	dc.b	bf6,pat,@PAT_2,cn6,pat,@PAT_2,pan,$40
+	dc.b	en6,pat,@PAT_2,gn6,pat,@PAT_2,pan,$c0
+	dc.b	bf6,pat,@PAT_2,cn6,pat,@PAT_2,pan,$80
+	dc.b	en6,pat,@PAT_2,gn6,pat,@PAT_2,pan,$c0
+	dc.b	an5,pat,@PAT_2,dn6,pat,@PAT_2,pan,$40
+	dc.b	en6,pat,@PAT_3,an6,pat,@PAT_3,pan,$c0
+	dc.b	an5,pat,@PAT_3,dn6,pat,@PAT_3,pan,$80
+	dc.b	en6,pat,@PAT_3,an6,pat,@PAT_3,pan,$c0
+	dc.b	an5,pat,@PAT_3,dn6,pat,@PAT_3,pan,$40
+	dc.b	en6,pat,@PAT_3,an6,pat,@PAT_3,pan,$c0
+	dc.b	an5,pat,@PAT_3,dn6,pat,@PAT_3,pan,$80
+	dc.b	en6,pat,@PAT_3,an6,pat,@PAT_3,pan,$c0
 	dc.b	l2,finish
-
+@P2
+	dc.b	volm,8, tie,volm,-8,finish
+@P3
+	dc.b	volm,10,tie,volm,-8,finish
 @T0
 	dc.b	tempo,$75
 	dc.b	ins,@FM_0,vol,20,pat,@PAT_0,finish
