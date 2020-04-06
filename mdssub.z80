@@ -1,0 +1,157 @@
+;======================================================================
+; MDSDRV - mega drive 68k sound driver
+; (C) 2019-2020 ian karlsson
+;----------------------------------------------------------------------
+; Z80 driver - handles PCM and common FM chip writes
+;----------------------------------------------------------------------
+; Memory map:
+;   09 - High byte of argument (use MOVEP.W)
+;   0b - Low byte of argument
+;   0d - Busy flag (currently writing to FM chip)
+;   0f - Idle command (PCM enable)
+;   15 - Request command
+;
+; The Z80 driver is ready to accept commands if the request command
+; at $0015 is identical to the idle command at $000f. (Or just if it
+; is equal to an "idle" command, depending on how you see it.)
+;
+; The Z80 driver is currently controlling the YM2612 if the byte at
+; at $000d is non-zero. This byte should also be set by the 68k if it
+; issues a command to the Z80 to write to the YM2612.
+;======================================================================
+
+	org		$0
+;======================================================================
+; entry point
+;----------------------------------------------------------------------
+entry
+	di						; $00
+	ld		sp,$2000		; $01
+	jp		start			; $04
+	nop						; $07
+
+;======================================================================
+; get command arguments (MOVEP compatible)
+;----------------------------------------------------------------------
+get_data
+	ld		b,$00			; $08 - load b from $09
+	ld		c,$00			; $0a - load c from $0b
+	ret						; $0c
+busy_flag
+	.db		$00				; $0d - communication flag at $0d
+
+;======================================================================
+; main idle loop entry
+;----------------------------------------------------------------------
+done
+	ld		a,$fe			; $0e - idle mode command at $0f
+	ld		(jump_cmd+1),a	; $10
+	ld		(hl),h			; $13
+jump_cmd
+	jr		jump_cmd		; $14 - command request at $15
+
+;======================================================================
+; command jump table
+;----------------------------------------------------------------------
+	jp		cmd_freq_1		; 00 | fm channel 1 frequency
+	nop						; ---+-------------------------------------
+	jp		cmd_freq_2		; 04 | fm channel 2 frequency
+	nop						; ---+-------------------------------------
+	jp		cmd_freq_3		; 08 | fm channel 3 frequency
+	nop						; ---+-------------------------------------
+	jp		cmd_write_0		; 0c | fm port 0 write
+	nop						; ---+-------------------------------------
+	jp		cmd_freq_4		; 10 | fm channel 4 frequency
+	nop						; ---+-------------------------------------
+	jp		cmd_freq_5		; 14 | fm channel 5 frequency
+	nop						; ---+-------------------------------------
+	jp		cmd_freq_6		; 18 | fm channel 6 frequency
+	nop						; ---+-------------------------------------
+	jp		cmd_write_1		; 1c | fm port 1 write
+	nop						; ---+-------------------------------------
+	jp		cmd_freq_31		; 20 | fm channel 3 op 1 frequency
+	nop						; ---+-------------------------------------
+	jp		cmd_freq_32		; 24 | fm channel 3 op 2 frequency
+	nop						; ---+-------------------------------------
+	jp		cmd_freq_33		; 28 | fm channel 3 op 3 frequency
+	nop						; ---+-------------------------------------
+	jp		cmd_freq_3		; 2c | fm channel 3 op 4 frequency
+	nop						; ---+-------------------------------------
+	jp		jump_cmd		; 30 | nop
+	nop						; ---+-------------------------------------
+	jp		jump_cmd		; 34 | no pcm idle
+	nop						; ---+-------------------------------------
+	jp		cmd_pcm			; 38 | pcm idle
+	nop						; ---+-------------------------------------
+	jp		jump_cmd		; 3c | nop
+	nop						; ---+-------------------------------------
+
+;======================================================================
+; PCM idle routine
+;----------------------------------------------------------------------
+cmd_pcm
+	ld		a,(ix)
+	rrca
+	jr		nc,jump_cmd
+	ld		(hl),l							; set busy flag
+	jp		done
+
+;======================================================================
+; driver initialize
+;----------------------------------------------------------------------
+start
+	ld		ix,$4000						; fm chip port
+	ld		hl,busy_flag					; communication flag
+	jp		done
+
+cmd_nop
+	jp		jump_cmd
+
+;======================================================================
+; write single register to FM chip
+;----------------------------------------------------------------------
+cmd_write_0
+	rst		$08
+	ld		(ix+0),b
+	ld		(ix+1),c
+	jp		done
+
+cmd_write_1
+	rst		$08
+	ld		(ix+2),b
+	ld		(ix+3),c
+	jp		done
+
+;======================================================================
+; write frequency value
+;----------------------------------------------------------------------
+	macro writefreq port,reg
+		rst		$08
+		ld		(ix+port),reg
+		ld		(ix+port+1),b
+		ld		a,(ix+0)
+		ld		(ix+port),reg+4
+		ld		(ix+port+1),c
+		jp		done
+	endm
+
+cmd_freq_1
+	writefreq	$00,$a0
+cmd_freq_2
+	writefreq	$00,$a1
+cmd_freq_3
+	writefreq	$00,$a2
+cmd_freq_4
+	writefreq	$02,$a0
+cmd_freq_5
+	writefreq	$02,$a1
+cmd_freq_6
+	writefreq	$02,$a2
+cmd_freq_31
+	writefreq	$00,$a9
+cmd_freq_32
+	writefreq	$00,$aa
+cmd_freq_33
+	writefreq	$00,$a8
+
+

@@ -30,7 +30,7 @@ version_str
 ;	a0 - pointer to work area
 ;   a1 - pointer to request base table (sdtop)
 ; TRASHES
-;   a1, d0-d1
+;   a0-a1, d0-d1
 mds_init
 @zero		equr d0
 
@@ -71,6 +71,13 @@ mds_halt
 	move.b	#$bf,(a1)
 	move.b	#$df,(a1)
 	move.b	#$ff,(a1)
+
+	lea		mds_z80_driver(pc),a0
+	lea		z80_ram,a1
+	move.w	#mds_z80_driver_size-1,d0
+@z80_loop
+	move.b	(a0)+,(a1)+
+	dbra	d0,@z80_loop
 
 	reset_z80
 	start_z80
@@ -1476,5 +1483,13 @@ mds_psgn_update
 ;----------------------------------------------------------------------
 mds_dummy_update
 	bra.w	mds_update_return
+
+;======================================================================
+; Z80 driver
+;----------------------------------------------------------------------
+mds_z80_driver
+	incbin	"mdssub.bin"
+mds_z80_driver_size		equ *-mds_z80_driver
+	even
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:

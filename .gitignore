@@ -6,6 +6,7 @@ ctrmml
 *.lst
 main.bin
 mdsdrv.bin
+mdssub.bin
 a.exe
 a.out
 error.txt
