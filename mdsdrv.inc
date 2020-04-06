@@ -9,28 +9,34 @@ TSTACK_COUNT	equ		10			; stack size (in words)
 ; register define
 ;----------------------------------------------------------------------
 ;always
-work	equr	a0							; driver work
-twork	equr	a1							; track work
-tbase	equr	a2							; track base address
-tpos	equr	a3							; track position
-tmpa0	equr	a4							; temp address reg
-tmpa1	equr	a5
-tmpa2	equr	a6
+work			equr	a0			; driver work
+twork			equr	a1			; track work
+tbase			equr	a2			; track base address
+tpos			equr	a3			; track position
+tmpa0			equr	a4			; temp address reg
+tmpa1			equr	a5
+tmpa2			equr	a6
 
 ; during request/track processing
-rnum	equr	d7							; request #  (low word)
-flag	equr	d7							; flags      (high word)
-tnum	equr	d6							; track #
-tmask	equr	d5							; track mask
+rnum			equr	d7			; request #  (low word)
+flag			equr	d7			; flags      (high word)
+tnum			equr	d6			; track #
+tmask			equr	d5			; track mask
 
 ; during voice processing
-chnid	equr	d5							; channel id
+chnid			equr	d5			; channel id
+
+;======================================================================
+; request flags
+;======================================================================
+rf_active		equ		15			; request is active
+rf_stop			equ 	14			; stop previous track
 
 ;======================================================================
 ; note flags during voice processing (btst #nf+nf_enabled)
 ;======================================================================
-nf		equ		8+16
-cf		equ		0+16
+nf				equ		8+16
+cf				equ		0+16
 
 ;======================================================================
 ; note flags

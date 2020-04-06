@@ -20,7 +20,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"vaporware 200402"
+	dc.b	"vaporware 200406"
 ;	dc.b	"MDSDRV190525V0.0"
 
 ;======================================================================
@@ -76,43 +76,6 @@ mds_halt
 	start_z80
 	rts
 
-	lea		sound_fm_a0,a1
-@next_part
-	move.b	#$80,d1							; release rate
-@rr_loop
-	btst.b	#7,sound_fm_a0
-	bne.s	@rr_loop
-	move.b	d1,(a1)					;17 cycle wait after writing reg#
-	nop
-	move.b	#$0f,1(a1)						; 16 cycles + 1 nop
-	addq.b	#1,d1							; next operator
-	cmpi.b	#$90,d1
-	bcs.s	@rr_loop
-	addq.w	#2,a1
-	cmpa.l	#sound_fm_a1+2,a1
-	bne.s	@next_part
-
-	subq.w	#4,a1
-	move.b	#$00,d1							; key off
-@keyoff_loop
-	btst.b	#7,sound_fm_a0
-	bne.s	@keyoff_loop
-	move.b	#$28,(a1)				;17 cycle wait after writing reg#
-	nop
-	nop
-	move.b	d1,1(a1)						; 12 cycles + 2 nops
-	addq.b	#1,d1							; next channel
-	cmpi.b	#$07,d1
-	beq.s	@keyoff_done
-	cmpi.b	#$03,d1							; ch4?
-	bne.s	@keyoff_loop
-	addq.b	#1,d1
-	bra.s	@keyoff_loop
-
-@keyoff_done
-	start_z80
-	rts
-
 ;======================================================================
 ; update sound driver
 ;----------------------------------------------------------------------
@@ -131,11 +94,12 @@ mds_update
 
 @next_request
 	move.w	w_request(work,rnum),@reqdata
-	btst	#15,@reqdata					;request flag set
-	beq.s	@not_triggered
-	bsr.w	mds_start_song
+	bmi.w	mds_handle_request
 
-@not_triggered
+;----------------------------------------------------------------------
+mds_handle_request_return		equ *
+;----------------------------------------------------------------------
+
 	move.w	w_tmask(work,rnum),@reqdata
 	beq.s	@request_done
 	move.w	w_counter(work,rnum),@counter	;apply tempo
@@ -172,14 +136,18 @@ mds_update_voices
 	lea		w_chmask(work),tpos				; channel mask
 	move.w	#TCOUNT-1,tnum
 
-mds_update_voices_loop
+@next_voice
 	move.w	t_note_flag(twork),flag
-	bpl.s	mds_next_voice2					;skip if not enabled
+	bpl.s	@voice_not_enabled				;skip if not enabled
 	swap	flag
 
 	move.b	t_request_id(twork),rnum	;update sequence if needed
 	move.w	w_seq_step(work,rnum),d4
-mds_update_seq_end
+
+;----------------------------------------------------------------------
+mds_update_seq_return			equ	*
+;----------------------------------------------------------------------
+
 	dbra	d4,mds_update_seq
 
 	movea.l	tpos,tmpa0
@@ -202,16 +170,20 @@ mds_update_seq_end
 	move.b	chnid,d0
 	add.b	d0,d0
 	add.b	chnid,d0
-	jmp		mds_ch_update_table(pc,d0)
+	jmp		@ch_update_table(pc,d0)
 @no_priority
 	st		t_last_pitch(twork)
 	ori.l	#nm_restore<<nf,flag
-mds_next_voice
+
+;----------------------------------------------------------------------
+mds_update_return				equ *
+;----------------------------------------------------------------------
+
 	swap	flag
 	move.w	flag,t_note_flag(twork)
-mds_next_voice2
+@voice_not_enabled
 	lea		TSIZE(twork),twork				; next track
-	dbra	tnum,mds_update_voices_loop
+	dbra	tnum,@next_voice
 
 	start_z80
 
@@ -221,76 +193,32 @@ mds_next_voice2
 ; channel update routine table
 ;----------------------------------------------------------------------
 ; Each routine must if needed save the flags to memory and jump to
-; mds_next_voice at the end.
-mds_ch_mapping	macro
+; mds_update_return at the end.
+@ch_mapping			macro
 	moveq	\1,chnid
 	bra.w	\2
 	endm
 
-mds_ch_update_table
-	mds_ch_mapping	#0,mds_fm0_update		;0
-	mds_ch_mapping	#1,mds_fm0_update		;1
-	mds_ch_mapping	#2,mds_fm0_update		;2
-	mds_ch_mapping	#4,mds_fm1_update		;3
-	mds_ch_mapping	#5,mds_fm1_update		;4
-	mds_ch_mapping	#6,mds_fm1_update		;5
-	mds_ch_mapping	#-128,mds_psg_update	;6
-	mds_ch_mapping	#-96,mds_psg_update		;7
-	mds_ch_mapping	#-64,mds_psg_update		;8
-	mds_ch_mapping	#-32,mds_psgn_update	;9
-	mds_ch_mapping	#10,mds_dummy_update	;a
-	mds_ch_mapping	#11,mds_dummy_update	;b
-	mds_ch_mapping	#12,mds_dummy_update	;c
-	mds_ch_mapping	#13,mds_dummy_update	;d
-	mds_ch_mapping	#14,mds_dummy_update	;e
-	mds_ch_mapping	#15,mds_dummy_update	;f
+@ch_update_table
+	@ch_mapping		#0,mds_fm0_update		;0
+	@ch_mapping		#1,mds_fm0_update		;1
+	@ch_mapping		#2,mds_fm0_update		;2
+	@ch_mapping		#4,mds_fm1_update		;3
+	@ch_mapping		#5,mds_fm1_update		;4
+	@ch_mapping		#6,mds_fm1_update		;5
+	@ch_mapping		#-128,mds_psg_update	;6
+	@ch_mapping		#-96,mds_psg_update		;7
+	@ch_mapping		#-64,mds_psg_update		;8
+	@ch_mapping		#-32,mds_psgn_update	;9
+	@ch_mapping		#10,mds_dummy_update	;a
+	@ch_mapping		#11,mds_dummy_update	;b
+	@ch_mapping		#12,mds_dummy_update	;c
+	@ch_mapping		#13,mds_dummy_update	;d
+	@ch_mapping		#14,mds_dummy_update	;e
+	@ch_mapping		#15,mds_dummy_update	;f
 
 ;======================================================================
-; Request track
-;----------------------------------------------------------------------
-; INPUT
-;	a0 - pointer to work area
-;	d0 - request track
-;	d1 - request priority, range 0-3.
-; TRASHES
-;	d0,d1
-mds_request
-	bset	#15,d0
-	andi.w	#3,d1
-	lsl.w	d1
-	move.w	d0,w_request(a0,d1)
-	rts
-
-;======================================================================
-; stops song playback
-;----------------------------------------------------------------------
-; INPUT
-;   twork - track's working area
-; OUTPUT
-;   -
-; TRASHES
-;	d1,d6
-mds_stop_song
-	lea		w_track(work),twork
-	move.w	#TCOUNT-1,tnum
-	move.w	w_tmask(work,rnum),tmask
-
-@next_track
-	btst	tnum,tmask						;track id
-	beq.w	@skip_track
-	ori.b	#nm_stop,t_note_flag(twork)
-	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
-
-@skip_track
-	lea		TSIZE(twork),twork				;next track
-	dbra	tnum,@next_track
-	clr.w	w_tmask(work,rnum)				;clear trackmask
-	clr.w	w_chmask(work,rnum)				;clear chmask
-@exit
-	rts
-
-;======================================================================
-; starts song playback
+; starts or stops song playback
 ;----------------------------------------------------------------------
 ; INPUT
 ;   twork - track's working area
@@ -299,18 +227,20 @@ mds_stop_song
 ;   -
 ; TRASHES
 ;	d0-d3, tmpa0, tmpa1
-mds_start_song
-@reqdata	equr	d0						;request id
+mds_handle_request
+@reqdata	equr	d0
 @tempo		equr	d1						;global tempo
 @zero		equr	d1
 @tempreg	equr	d2
 
-	bclr	#15,@reqdata
-	move.w	@reqdata,w_request(work,rnum)	;clear request flag
-	bsr.w	mds_stop_song					;stop already playing song
+	bclr	#rf_stop,@reqdata
+	bne.w	@stop_song						;stop already playing song
+
+	bclr	#rf_active,@reqdata
+	move.w	@reqdata,w_request(work,rnum)	;store request flag
 
 	subq.w	#1,@reqdata						;subtract sound codes
-	bmi		@exit							;0 to stop a track
+	bmi.w	mds_handle_request_return			;0 to stop a track
 
 	lea		mds_psg_init(pc),tmpa1
 
@@ -375,7 +305,50 @@ mds_start_song
 @skip_track
 	lea		TSIZE(twork),twork				;next track
 	dbra	tnum,@next_track
-@exit
+	bra.w	mds_handle_request_return
+
+;======================================================================
+; stops song playback
+;----------------------------------------------------------------------
+; INPUT
+;   twork - track's working area
+; OUTPUT
+;   -
+; TRASHES
+;	d1,d6
+@stop_song
+	move.w	@reqdata,w_request(work,rnum)	;store request flag
+	lea		w_track(work),twork
+	move.w	#TCOUNT-1,tnum
+	move.w	w_tmask(work,rnum),tmask
+
+@stop_next_track
+	btst	tnum,tmask						;track id
+	beq.w	@stop_skip_track
+	ori.b	#nm_stop,t_note_flag(twork)
+	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
+
+@stop_skip_track
+	lea		TSIZE(twork),twork				;next track
+	dbra	tnum,@stop_next_track
+	clr.w	w_tmask(work,rnum)				;clear trackmask
+	clr.w	w_chmask(work,rnum)				;clear chmask
+	bra.w	mds_handle_request_return
+
+;======================================================================
+; Request track
+;----------------------------------------------------------------------
+; INPUT
+;	a0 - pointer to work area
+;	d0 - request track
+;	d1 - request priority, range 0-3.
+; TRASHES
+;	d0,d1
+mds_request
+	ori.w	#(1<<rf_active)+(1<<rf_stop),d0
+	andi.w	#3,d1
+	lsl.w	d1
+	move.w	d0,w_request(a0,d1)
 	rts
 
 ;======================================================================
@@ -393,7 +366,7 @@ mds_update_seq
 @cmdlen		equr	d2
 @tempreg	equr	d3
 	subq.b	#1,t_counter(twork)
-	bcc.w	mds_update_seq_end
+	bcc.w	mds_update_seq_return
 
 ;----------------------------------------------------------------------
 ; command read loop
@@ -413,7 +386,7 @@ mds_update_seq
 	move.b	@cmd,t_rest_time(twork)			;00-7f - rest
 	move.b	@cmd,t_counter(twork)
 	move.w	@trackpos,t_position(twork)
-	bra.w	mds_update_seq_end
+	bra.w	mds_update_seq_return
 
 @cmd_80
 	sub.b	#$81,@cmd						;81 - tie
@@ -443,18 +416,18 @@ mds_update_seq
 	move.b	@cmd,(tmpa0)
 	addq.w	#1,@trackpos
 	move.w	@trackpos,t_position(twork)
-	bra.w	mds_update_seq_end
+	bra.w	mds_update_seq_return
 
 @cmd_previous_delta
 	move.b	(tmpa0),t_counter(twork)
 	move.w	@trackpos,t_position(twork)
-	bra.w	mds_update_seq_end
+	bra.w	mds_update_seq_return
 
 @cmd_rest2
 	bset	#nf+nf_key_off,flag				;80 - rest 2
 	move.b	t_rest_time(twork),t_counter(twork)
 	move.w	@trackpos,t_position(twork)
-	bra.w	mds_update_seq_end
+	bra.w	mds_update_seq_return
 
 @cmd_other
 	andi.w	#$1f,@cmd
@@ -533,7 +506,7 @@ mds_update_seq
 
 	addq.w	#4,sp							;break out of command
 	move.w	@trackpos,t_position(twork)
-	bra.w	mds_update_seq_end
+	bra.w	mds_update_seq_return
 
 @cmd_return
 	subq.b	#2,@cmd
@@ -1309,7 +1282,7 @@ mds_fm0_update
 	btst	#cf+cf_fm3_enable,flag
 	beq.s	@no_fm3_key_on						; TODO: fm3_keyon
 
-	bra.w	mds_next_voice
+	bra.w	mds_update_return
 
 @no_fm3_key_on
 ;	btst	#cf+cf_pcm_control,flag				; TODO: pcm_keyon
@@ -1324,7 +1297,7 @@ mds_fm0_update
 
 @no_key_on
 
-	bra.w	mds_next_voice
+	bra.w	mds_update_return
 
 ;======================================================================
 ; PSG envelope update
@@ -1463,7 +1436,7 @@ mds_psg_update
 	bsr.w	mds_psg_update_env
 	bsr.w	mds_pitch_update
 	cmp.w	t_last_pitch(twork),d0
-	beq.w	mds_next_voice
+	beq.w	mds_update_return
 	move.w	d0,t_last_pitch(twork)
 mds_psg_set_pitch
 	bsr.w	mds_get_psg_pitch
@@ -1473,7 +1446,7 @@ mds_psg_set_pitch
 	move.b	d1,sound_psg
 	lsr.w	#4,d0
 	move.b	d0,sound_psg
-	bra.w	mds_next_voice
+	bra.w	mds_update_return
 
 ;======================================================================
 ; PSG noise update
@@ -1482,7 +1455,7 @@ mds_psgn_update
 	bsr.w	mds_psg_update_env
 	bsr.w	mds_pitch_update
 	cmp.w	t_last_pitch(twork),d0
-	beq.w	mds_next_voice
+	beq.w	mds_update_return
 	move.w	d0,t_last_pitch(twork)
 	move.b	t_psg_nmode(twork),d1
 	beq.s	@no_psg3_control
@@ -1496,12 +1469,12 @@ mds_psgn_update
 	andi.b	#$07,d0
 	ori.b	#$e0,d0
 	move.b	d0,sound_psg
-	bra.w	mds_next_voice
+	bra.w	mds_update_return
 
 ;======================================================================
 ; Dummy channel update (only check for FM3)
 ;----------------------------------------------------------------------
 mds_dummy_update
-	bra.w	mds_next_voice
+	bra.w	mds_update_return
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:
