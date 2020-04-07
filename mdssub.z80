@@ -153,5 +153,4 @@ cmd_freq_32
 	writefreq	$00,$aa
 cmd_freq_33
 	writefreq	$00,$a8
-
-
+; vim: set ft=z8a sw=4 ts=4 noet:
