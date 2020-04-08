@@ -3,6 +3,9 @@
 ; (C) 2019-2020 ian karlsson
 ;======================================================================
 
+ASM68K = 1
+	include		"mdssub.inc"
+
 ;======================================================================
 ; ABI call
 ;----------------------------------------------------------------------
@@ -64,20 +67,16 @@ mds_init
 	lea		TSIZE(twork),twork				;next track
 	dbra	d1,@next_track
 
-mds_halt
 	stop_z80
+	bsr.w	mds_z80_init
+
+mds_halt
+	block_z80
 	lea		sound_psg,a1
 	move.b	#$9f,(a1)						;mute psg
 	move.b	#$bf,(a1)
 	move.b	#$df,(a1)
 	move.b	#$ff,(a1)
-
-	lea		mds_z80_driver(pc),a0
-	lea		z80_ram,a1
-	move.w	#mds_z80_driver_size-1,d0
-@z80_loop
-	move.b	(a0)+,(a1)+
-	dbra	d0,@z80_loop
 
 	reset_z80
 	start_z80
@@ -98,6 +97,8 @@ mds_update
 
 	clr.l	rnum
 	lea		w_track(work),twork
+	lea		z80_bus_request,zreq
+	lea		z80_ram,zram
 
 @next_request
 	move.w	w_request(work,rnum),@reqdata
@@ -136,11 +137,7 @@ mds_handle_request_return		equ *
 ; update voices
 ;----------------------------------------------------------------------
 mds_update_voices
-@updtab		equr	tmpa2
-	stop_z80
-
 	lea		w_track(work),twork				; first track's addr
-	lea		w_chmask(work),tpos				; channel mask
 	move.w	#TCOUNT-1,tnum
 
 @next_voice
@@ -157,7 +154,7 @@ mds_update_seq_return			equ	*
 
 	dbra	d4,mds_update_seq
 
-	movea.l	tpos,tmpa0
+	lea		w_chmask(work),tmpa0			; channel mask
 	move.b	t_channel_id(twork),chnid		;check priority
 	move.b	t_request_id(twork),d0
 	rept	RCOUNT-1
@@ -191,8 +188,6 @@ mds_update_return				equ *
 @voice_not_enabled
 	lea		TSIZE(twork),twork				; next track
 	dbra	tnum,@next_voice
-
-	start_z80
 
 	rts
 
@@ -1056,7 +1051,6 @@ mds_pitch_update
 ; TRASHES
 ;  tmpa1,d0,d1,d2,d3
 mds_fm_update_ins
-@fm			equr	tmpa0
 	move.w	chnid,d1
 	andi.b	#$03,d1
 	swap	chnid
@@ -1074,25 +1068,25 @@ mds_fm_update_ins
 @nextop											; burn 83-14 = 69
 	bsr.s	@burn56								;     56 : 56
 @notbusy:
-	move.b	d0,0(@fm,chnid)						;     14 : 70
-	move.b	#$7f,1(@fm,chnid)					;        : 18
+	move.b	d0,0(zram,chnid)					;     14 : 70
+	move.b	#$7f,1(zram,chnid)					;        : 18
 	addq.b	#4,d0								;  10/14 : 18 (14)
 	dbra	d2,@nextop							;  10/14 : 32
 
 ;----------------------------------------------------------------------
 ; load inst data
 ;----------------------------------------------------------------------
-	lea		@op_reg_table(pc),tmpa2				;      8
+	lea		@op_reg_table(pc),tmpa0				;      8
 	moveq	#5,d3								;      4
 
 @nextreg
-	move.b	(tmpa2)+,d0							;      8
+	move.b	(tmpa0)+,d0							;      8
 	add.b	d1,d0								;      4
 	moveq	#3,d2								;      4
 @nextop2										; burn 83-14 = 69
 	bsr.s	@burn56								;     56 : 56
-	move.b	d0,0(@fm,chnid)						;     14 : 70
-	move.b	(tmpa1)+,1(@fm,chnid)				;       : 18
+	move.b	d0,0(zram,chnid)					;     14 : 70
+	move.b	(tmpa1)+,1(zram,chnid)				;       : 18
 	addq.b	#4,d0								;      4 :  4
 	dbra	d2,@nextop2							;  10/14 : 18 (14)
 	dbra	d3,@nextreg							;  10/14 : 32
@@ -1105,8 +1099,8 @@ mds_fm_update_ins
 	move.b	#$b0,d0								;      8 : 16
 	add.b	d1,d0								;      4 : 20
 	cmp.b	sound_fm_a0,d0						;12+4=16 : 36
-	move.b	d0,0(@fm,chnid)						;     14 : 52
-	move.b	(tmpa1)+,1(@fm,chnid)				;        : 18
+	move.b	d0,0(zram,chnid)					;     14 : 52
+	move.b	(tmpa1)+,1(zram,chnid)				;        : 18
 	swap	chnid
 	rts
 
@@ -1136,7 +1130,6 @@ mds_fm_update_ins
 ; TRASHES
 ;  tmpa1,tmpa2,d0,d1,d2,d3,d4
 mds_fm_update_vol
-@fm			equr	tmpa0
 	lea		4+t_fm_tl(twork),tmpa1
 	move.b	t_vol(twork),d3
 	bpl.s	@no_vol_table
@@ -1167,9 +1160,9 @@ mds_fm_update_vol
 @no_overflow									;           46
 	cmp.b	*(pc),d0							;  8+4=12 : 58
 @write_vol										;           58 to 62
-	move.b	d1,0(@fm,chnid)						;      14 : 72-76
+	move.b	d1,0(zram,chnid)					;      14 : 72-76
 	nop											;       4 :  4
-	move.b	d0,1(@fm,chnid)						;      14 : 18
+	move.b	d0,1(zram,chnid)					;      14 : 18
 	subq.b	#4,d1								;       4 :  4
 	dbra	d2,@nextop							;   10/14 : 18 (14)
 	swap	chnid
@@ -1191,24 +1184,21 @@ mds_fm_vol_table
 ; TRASHES:
 ;  chnid
 mds_fm1_update
-	bset	#17,chnid								; use second port
+	bset	#17,chnid								; $4002
 mds_fm0_update
 @fm			equr	tmpa0
-	lea		sound_fm_a0,@fm
+	bset	#30,chnid								; $4000
 ;----------------------------------------------------------------------
 ; key_off update
 ;----------------------------------------------------------------------
 	bclr	#nf+nf_key_off,flag
 	beq.s	@no_key_off
-;TODO: FM3, pcm
 
-@busy0
-	btst.b	#7,(@fm)
-	bne.s	@busy0
-	move.b	#$28,(@fm)
+	mds_z80_wait_fm
+	move.b	#$28,$4000(zram)
 	nop
 	nop
-	move.b	chnid,1(@fm)						;12 cycles + 2 nop
+	move.b	chnid,$4001(zram)						;12 cycles + 2 nop
 
 @no_key_off
 ;----------------------------------------------------------------------
@@ -1234,6 +1224,7 @@ mds_fm0_update
 ;----------------------------------------------------------------------
 	bclr	#nf+nf_vol,flag
 	beq.s	@no_vol
+	mds_z80_wait_fm
 
 @update_vol
 	bsr.w	mds_fm_update_vol
@@ -1242,9 +1233,19 @@ mds_fm0_update
 ;----------------------------------------------------------------------
 ; pitch update
 ;----------------------------------------------------------------------
+	mds_z80_start
 	bsr.w	mds_pitch_update
 	cmp.w	t_last_pitch(twork),d0
 	beq.s	@no_write_pitch
+
+; this routine won't be truly useful until i have FM f-num
+; calculation on Z80
+
+;	move.w	d0,t_last_pitch(twork)
+;	move.b	chnid,d1							; multiply by 3
+;	add.b	d1,chnid
+;	add.b	d1,chnid
+;	mds_z80_cmd2	d1,d0						; pitch update
 
 	move.w	d0,d3
 	bsr.w	mds_get_fm_pitch
@@ -1252,15 +1253,17 @@ mds_fm0_update
 	swap	chnid
 	andi.b	#3,d1
 	addi.b	#$a4,d1
-	move.b	d1,0(@fm,chnid)
+	mds_z80_wait_fm
+	move.b	d1,0(zram,chnid)
 	nop
-	move.b	d0,1(@fm,chnid)						; 4+14 : 18
+	move.b	d0,1(zram,chnid)					; 4+14 : 18
 	ror.w	#8,d0								; 22  :  22
 	subq.b	#4,d1								;  4  :  28
 	move.w	d3,t_last_pitch(twork)				; 12  :  40
-	move.b	d1,0(@fm,chnid)						; 14  :  54
+	move.b	d1,0(zram,chnid)					; 14  :  54
 	nop
-	move.b	d0,1(@fm,chnid)						; 4+14 : 18
+	move.b	d0,1(zram,chnid)					; 4+14 : 18
+	mds_z80_start
 	swap	chnid
 
 @no_write_pitch
@@ -1274,9 +1277,11 @@ mds_fm0_update
 	swap	chnid
 	andi.b	#3,d1
 	addi.b	#$b4,d1
-	move.b	d1,0(@fm,chnid)
+	mds_z80_wait_fm
+	move.b	d1,0(zram,chnid)
 	nop
-	move.b	d0,1(@fm,chnid)						; 4+14 : 18
+	move.b	d0,1(zram,chnid)					; 4+14 : 18
+	mds_z80_start
 	swap	chnid
 
 @no_lfo
@@ -1297,10 +1302,12 @@ mds_fm0_update
 	bclr	#nf+nf_slur,flag
 	bne.s	@no_key_on
 
-	move.b	#$28,(@fm)
+	mds_z80_wait_fm
+	move.b	#$28,$4000(zram)
 	move.b	chnid,d0							; 4 :  4
 	ori.b	#$f0,d0								; 8 : 12
-	move.b	d0,1(@fm)							;12 : 24
+	move.b	d0,$4001(zram)						;12 : 24
+	mds_z80_start
 
 @no_key_on
 
@@ -1484,12 +1491,45 @@ mds_psgn_update
 mds_dummy_update
 	bra.w	mds_update_return
 
-;======================================================================
-; Z80 driver
-;----------------------------------------------------------------------
-mds_z80_driver
-	incbin	"mdssub.bin"
-mds_z80_driver_size		equ *-mds_z80_driver
-	even
 
+
+;======================================================================
+; Z80 access functions
+;======================================================================
+
+
+;======================================================================
+; Upload Z80 program. Assumes Z80 is already stopped
+;----------------------------------------------------------------------
+mds_z80_init
+	lea		@z80_driver(pc),a0			;upload Z80 driver
+	lea		z80_ram,a1
+	move.w	#@volume_table-@z80_driver-1,d0
+@z80_loop
+	move.b	(a0)+,(a1)+
+	dbra	d0,@z80_loop
+
+	lea		z80_ram+$1000,a1			; calculate volume tables
+	moveq	#0,d0
+@next_byte
+	move.b	d0,d1
+	ext.w	d1
+	muls	(a0),d1
+	lsr.w	#8,d1
+	move.b	d1,(a1)+
+	addq.b	#1,d0
+	bne.s	@next_byte
+	cmpi.w	#$100,(a0)+
+	bne.s	@next_byte
+	rts
+
+@z80_driver
+	incbin	"mdssub.bin"
+	even
+@volume_table
+	dc.w	8,10,13,16,20,26,32,40,51,64,81,102,128,161,203,256
+
+;======================================================================
+; PCM volume table
+;----------------------------------------------------------------------
 ; vim: set ft=asm68k sw=4 ts=4 noet:

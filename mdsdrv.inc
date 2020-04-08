@@ -12,10 +12,10 @@ TSTACK_COUNT	equ		10			; stack size (in words)
 work			equr	a0			; driver work
 twork			equr	a1			; track work
 tbase			equr	a2			; track base address
-tpos			equr	a3			; track position
 tmpa0			equr	a4			; temp address reg
 tmpa1			equr	a5
-tmpa2			equr	a6
+zreq			equr	a3			; track position
+zram			equr	a6
 
 ; during request/track processing
 rnum			equr	d7			; request #  (low word)

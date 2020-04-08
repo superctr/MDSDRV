@@ -3,22 +3,27 @@
 ; (C) 2019-2020 ian karlsson
 ;----------------------------------------------------------------------
 ; Z80 driver - handles PCM and common FM chip writes
-;----------------------------------------------------------------------
-; Memory map:
-;   09 - High byte of argument (use MOVEP.W)
-;   0b - Low byte of argument
-;   0d - Busy flag (currently writing to FM chip)
-;   0f - Idle command (PCM enable)
-;   15 - Request command
-;
-; The Z80 driver is ready to accept commands if the request command
-; at $0015 is identical to the idle command at $000f. (Or just if it
-; is equal to an "idle" command, depending on how you see it.)
-;
-; The Z80 driver is currently controlling the YM2612 if the byte at
-; at $000d is non-zero. This byte should also be set by the 68k if it
-; issues a command to the Z80 to write to the YM2612.
 ;======================================================================
+
+ASM68K			equ		0
+	include "mdssub.inc"
+
+BUFCOUNT		equ		12
+BUFSIZE			equ		BUFCOUNT*2
+VARSIZE			equ		12
+
+;======================================================================
+; variables
+;----------------------------------------------------------------------
+pcm1			equ		stack+0
+pcm1_bank		equ		stack+0
+pcm1_pos		equ		stack+2
+pcm1_count		equ		stack+4
+
+pcm2			equ		stack+0
+pcm2_bank		equ		stack+0
+pcm2_pos		equ		stack+2
+pcm2_count		equ		stack+4
 
 	org		$0
 ;======================================================================
@@ -26,113 +31,370 @@
 ;----------------------------------------------------------------------
 entry
 	di						; $00
-	ld		sp,$2000		; $01
-	jp		start			; $04
-	nop						; $07
+	ld		sp,stack		; $01
+	xor		a				; $04
+	jp		start			; $05
 
 ;======================================================================
 ; get command arguments (MOVEP compatible)
 ;----------------------------------------------------------------------
 get_data
-	ld		b,$00			; $08 - load b from $09
-	ld		c,$00			; $0a - load c from $0b
-	ret						; $0c
-busy_flag
-	.db		$00				; $0d - communication flag at $0d
+	ld		d,$00			; $08 - load d from $09
+	ld		e,$00			; $0a - load e from $0b
+	or		c				; $0c - set a non-zero value in a
+	ret						; $0d
+;======================================================================
+; set idle command and go to idle
+;----------------------------------------------------------------------
+; a - the idle command to set
+set_idle
+	ld		(z_mode),a		; $0e
 
 ;======================================================================
 ; main idle loop entry
 ;----------------------------------------------------------------------
-done
-	ld		a,$fe			; $0e - idle mode command at $0f
-	ld		(jump_cmd+1),a	; $10
-	ld		(hl),h			; $13
-jump_cmd
-	jr		jump_cmd		; $14 - command request at $15
+; bc - 007f (busy flag position & saturation byte)
+; hl - PCM buffer position
+; ix - FM chip address
+; iyh - Current bank
+; iyl - flags write?
+idle
+	ld		a,$fe			; $11 - idle mode command at $12
+	ld		(z_req),a		; $13
+idle_cmd
+	jr		idle_cmd		; $16 - command request at $17
 
 ;======================================================================
 ; command jump table
 ;----------------------------------------------------------------------
 	jp		cmd_freq_1		; 00 | fm channel 1 frequency
+	jp		cmd_freq_2		; 01 | fm channel 2 frequency
+	jp		cmd_freq_3		; 02 | fm channel 3 frequency
+	jp		cmd_write_0		; 03 | fm port 0 write
+	jp		cmd_freq_4		; 04 | fm channel 4 frequency
+	jp		cmd_freq_5		; 05 | fm channel 5 frequency
+	jp		cmd_freq_6		; 06 | fm channel 6 frequency
+	jp		cmd_write_1		; 07 | fm port 1 write
+	jp		cmd_freq3_1		; 08 | fm channel 3 op 1 frequency
+	jp		cmd_freq3_2		; 09 | fm channel 3 op 2 frequency
+	jp		cmd_freq3_3		; 0a | fm channel 3 op 1+2 frequency
+	jp		cmd_freq3_4		; 0b | fm channel 3 op 3 frequency
+	jp		cmd_freq3_5		; 0c | fm channel 3 op 1+3 frequency
+	jp		cmd_freq3_6		; 0d | fm channel 3 op 2+3 frequency
+	jp		cmd_freq3_7		; 0e | fm channel 3 op 1+2+3 frequency
+	jp		cmd_freq3_8		; 0f | fm channel 3 op 4 frequency
+	jp		cmd_freq3_9		; 10 | fm channel 3 op 1+4 frequency
+	jp		cmd_freq3_10	; 11 | fm channel 3 op 2+4 frequency 
+	jp		cmd_freq3_11	; 12 | fm channel 3 op 1+2+4 frequency 
+	jp		cmd_freq3_12	; 13 | fm channel 3 op 3+4 frequency 
+	jp		cmd_freq3_13	; 14 | fm channel 3 op 1+3+4 frequency
+	jp		cmd_freq3_14	; 15 | fm channel 3 op 2+3+4 frequency
+	jp		cmd_freq3_15	; 16 | fm channel 3 op 1+2+3+4 frequency
+	jp		idle_cmd		; 17 | start pcm 1
+	jp		idle_cmd		; 18 | start pcm 2
+	jp		idle_cmd		; 19 | stop pcm 1
+	jp		idle_cmd		; 1a | stop pcm 2
+	jp		idle_cmd		; 1b | set pcm 1 volume
+	jp		idle_cmd		; 1c | set pcm 2 volume
+	jp		idle_cmd		; 1d | stop all pcm
+	jp		idle_cmd		; 1e | nop
+	jp		idle_cmd		; 1f | nop
+	jp		idle_cmd		; 20 | nop
+	jp		idle_cmd		; 21 | nop
+	rst		$00				; 22 | force reset of sound driver
+;--------------------------------+-------------------------------------
+; Please note that the busy flag must be at position 7f. This is so
+; that the bc register can do double-duty in the mixing routine.
+busy_flag	db	$00
+;--------------------------------+-------------------------------------
+	jp		idle_cmd		; 68 | Idle state - nop
 	nop						; ---+-------------------------------------
-	jp		cmd_freq_2		; 04 | fm channel 2 frequency
+	jp		idle_cmd		; 6c | Idle state - nop
 	nop						; ---+-------------------------------------
-	jp		cmd_freq_3		; 08 | fm channel 3 frequency
+	jp		idle_pcm0		; 70 | Idle state - PCM 0 playback
 	nop						; ---+-------------------------------------
-	jp		cmd_write_0		; 0c | fm port 0 write
+	jp		idle_pcm1		; 74 | Idle state - PCM 1 playback
 	nop						; ---+-------------------------------------
-	jp		cmd_freq_4		; 10 | fm channel 4 frequency
+	jp		idle_pcm2		; 78 | Idle state - PCM 2 playback
 	nop						; ---+-------------------------------------
-	jp		cmd_freq_5		; 14 | fm channel 5 frequency
-	nop						; ---+-------------------------------------
-	jp		cmd_freq_6		; 18 | fm channel 6 frequency
-	nop						; ---+-------------------------------------
-	jp		cmd_write_1		; 1c | fm port 1 write
-	nop						; ---+-------------------------------------
-	jp		cmd_freq_31		; 20 | fm channel 3 op 1 frequency
-	nop						; ---+-------------------------------------
-	jp		cmd_freq_32		; 24 | fm channel 3 op 2 frequency
-	nop						; ---+-------------------------------------
-	jp		cmd_freq_33		; 28 | fm channel 3 op 3 frequency
-	nop						; ---+-------------------------------------
-	jp		cmd_freq_3		; 2c | fm channel 3 op 4 frequency
-	nop						; ---+-------------------------------------
-	jp		jump_cmd		; 30 | nop
-	nop						; ---+-------------------------------------
-	jp		jump_cmd		; 34 | no pcm idle
-	nop						; ---+-------------------------------------
-	jp		cmd_pcm			; 38 | pcm idle
-	nop						; ---+-------------------------------------
-	jp		jump_cmd		; 3c | nop
+	jp		idle_pcm12		; 7c | Idle state - PCM 1+2 playback
 	nop						; ---+-------------------------------------
 
 ;======================================================================
-; PCM idle routine
+; RAM variables
 ;----------------------------------------------------------------------
-cmd_pcm
-	ld		a,(ix)
-	rrca
-	jr		nc,jump_cmd
-	ld		(hl),l							; set busy flag
-	jp		done
+			assert	(256-$)>(VARSIZE+BUFSIZE+2)
+			block	256-(VARSIZE+BUFSIZE)-$,0
+
+stack		block VARSIZE
+buffer		block BUFSIZE
+buffer_end
 
 ;======================================================================
 ; driver initialize
 ;----------------------------------------------------------------------
 start
 	ld		ix,$4000						; fm chip port
-	ld		hl,busy_flag					; communication flag
-	jp		done
+	ld		iy,$ffff						; force bank switch
+	ld		de,buffer
+	exx
+	ld		hl,buffer_end-1					; sample buffer
+	ld		(hl),$80
+	ld		bc,busy_flag					; communication flag
+	jp		idle_pcm0						; pcm off
 
-cmd_nop
-	jp		jump_cmd
+;======================================================================
+; PCM macros
+;----------------------------------------------------------------------
+	macro check_pcm
+		ld		a,(ix+0)
+		rrca
+		jp		nc,idle_cmd
+		or		c
+		ld		(bc),a						; set busy flag
+		ld		(ix+0),$27					; timer flag clear
+		ld		(ix+1),$1f
+	endm
+	macro write_pcm
+		add		$80							; signed->unsigned
+		ld		(ix+0),$2a
+		ld		($4001),a
+		xor		a
+		ld		(bc),a						; clear busy flag
+		inc		l
+		jp		nz,idle_cmd					; data remaining in buffer
+		ld		a,low(buffer)
+		ld		e,a							; reset buffer address
+		exx
+		ld		e,a
+	endm
+	macro end_pcm
+		exx
+		ld		sp,stack
+		jp		idle_cmd
+	endm
+	macro set_bank
+		cp		iyh
+		jp		z,.no_bankswitch
+		ld		iyh,a
+		ld		hl,$6000
+		dup		7
+			ld		(hl),a
+			rra
+		edup
+		ld		(hl),a
+		ld		(hl),h
+.no_bankswitch
+	endm
+	macro fill_buffer var,mix,mask
+		if mix = 2
+			ld		e,low(buffer)
+		endif
+		ld		sp,var
+		pop		af							; bank
+		set_bank
+		pop		hl							; sample position
+		pop		bc							; sample count
+
+		if mix = 0
+			if mask = $fb
+				dup		BUFCOUNT
+					ldi
+					inc		e
+				edup
+				ld		d,e
+			else
+				dup		BUFCOUNT
+					inc		e
+					ldi
+				edup
+				ld		d,e
+			endif
+		endif
+		if mix = 1
+			ldi
+			dup		BUFCOUNT-1
+				inc		e
+				ldi
+			edup
+		endif
+		if mix = 2
+			dup		BUFCOUNT
+				inc		e
+				ldi
+			edup
+			ld		e,d
+		endif
+		push	bc
+		push	hl
+
+		djnz	.no_stop					; count <= $0100
+		ld		e,low(z_mode)
+		ld		a,(de)						; stop channel
+		and		mask
+		ld		(de),a
+.no_stop
+	endm
+
+;======================================================================
+; no PCM channels are active - disable
+;----------------------------------------------------------------------
+idle_pcm0
+	or		c
+	ld		(bc),a							; set busy flag
+	ld		(ix+0),$2b						; disable pcm
+	ld		(ix+1),$00
+	xor		a
+	ld		(bc),a
+	ld		a,$fe							; disable PCM output
+	jp		set_idle
+
+;======================================================================
+; update PCM1 only
+;----------------------------------------------------------------------
+idle_pcm1
+	check_pcm
+
+	ld		d,$10							; channel 1
+	ld		e,(hl)
+	ld		a,(de)
+	inc		l
+	write_pcm
+
+	fill_buffer	pcm1,0,$fb
+	end_pcm
+
+;======================================================================
+; update PCM2 only
+;----------------------------------------------------------------------
+idle_pcm2
+	check_pcm
+
+	ld		d,$10							; channel 2
+	ld		e,(hl)
+	ld		a,(de)
+	inc		l
+	write_pcm
+
+	fill_buffer	pcm2,0,$f7
+	end_pcm
+
+;======================================================================
+; update PCM1+2
+;----------------------------------------------------------------------
+idle_pcm12
+	check_pcm
+
+	ld		d,$10							; channel 1
+	ld		e,(hl)
+	ld		a,(de)
+	inc		l
+	ld		d,$10							; channel 2
+	ld		e,(hl)
+	ex		de,hl
+	add		a,(hl)
+	jp		po,.no_ovf
+	ld		a,b
+	adc		c
+.no_ovf
+	ex		de,hl
+	write_pcm
+
+	fill_buffer	pcm1,1,$fb
+
+	ld		e,low(buffer+1)
+	ld		sp,pcm2
+	pop		af							; bank
+	set_bank
+	pop		hl							; sample position
+	pop		bc							; sample count
+
+	ldi
+;----------------------------------------------------------------------
+; we can begin output the first sample already
+;----------------------------------------------------------------------
+	ld		a,(ix+0)
+	rrca
+	jp		nc,pcm12_no_timeout
+	or		e
+	ld		(busy_flag),a				; set busy flag
+	ld		(ix+0),$27					; timer flag clear
+	ld		(ix+1),$1f
+	exx
+	ld		d,$10						; channel 1
+	ld		e,(hl)
+	ld		a,(de)
+	inc		l
+	ld		d,$10						; channel 2
+	ld		e,(hl)
+	ex		de,hl
+	add		a,(hl)
+	jp		po,.no_ovf
+	ld		a,b
+	adc		c
+.no_ovf2
+	ex		de,hl
+	exx
+	add		$80							; signed->unsigned
+	ld		(ix+0),$2a
+	ld		($4001),a
+	xor		a
+	ld		(busy_flag),a				; clear busy flag
+	inc		l
+;----------------------------------------------------------------------
+pcm12_no_timeout
+	dup		BUFCOUNT-1
+		inc		e
+		ldi
+	edup
+	ld		e,d
+	push	bc
+	push	hl
+
+	djnz	.no_stop					; count <= $0100
+	ld		e,low(z_mode)
+	ld		a,(de)						; stop channel
+	and		$f7
+	ld		(de),a
+.no_stop
+	end_pcm
 
 ;======================================================================
 ; write single register to FM chip
 ;----------------------------------------------------------------------
 cmd_write_0
 	rst		$08
-	ld		(ix+0),b
-	ld		(ix+1),c
-	jp		done
+	ld		(bc),a
+	ld		(ix+0),d
+	ld		(ix+1),e
+	xor		a
+	ld		(bc),a
+	jp		idle
 
 cmd_write_1
 	rst		$08
-	ld		(ix+2),b
-	ld		(ix+3),c
-	jp		done
+	ld		(bc),a
+	ld		(ix+2),d
+	ld		(ix+3),e
+	xor		a
+	ld		(bc),a
+	jp		idle
 
 ;======================================================================
 ; write frequency value
 ;----------------------------------------------------------------------
 	macro writefreq port,reg
 		rst		$08
-		ld		(ix+port),reg
-		ld		(ix+port+1),b
-		ld		a,(ix+0)
+		ld		(bc),a
 		ld		(ix+port),reg+4
-		ld		(ix+port+1),c
-		jp		done
+		ld		(ix+port+1),e
+		nop							; 4 :  4
+		nop							; 4 :  8
+		ld		(ix+port),reg		;19 : 27
+		ld		(ix+port+1),d
+		xor		a
+		ld		(bc),a
+		jp		idle
 	endm
 
 cmd_freq_1
@@ -147,10 +409,102 @@ cmd_freq_5
 	writefreq	$02,$a1
 cmd_freq_6
 	writefreq	$02,$a2
-cmd_freq_31
-	writefreq	$00,$a9
-cmd_freq_32
-	writefreq	$00,$aa
-cmd_freq_33
-	writefreq	$00,$a8
+
+;======================================================================
+; write frequency value
+;----------------------------------------------------------------------
+	macro writefm3 port,reg
+		or		c
+		ld		(bc),a
+		ld		(ix+port),reg+4
+		ld		(ix+port+1),e
+		nop							; 4 :  4
+		nop							; 4 :  8
+		ld		(ix+port),reg		;19 : 27
+		ld		(ix+port+1),d
+		xor		a
+		ld		(bc),a
+		ret
+	endm
+freq_fm3_op1
+	writefm3	$00,$a9
+freq_fm3_op2
+	writefm3	$00,$aa
+freq_fm3_op3
+	writefm3	$00,$a8
+freq_fm3_op4
+	writefm3	$00,$a2
+
+cmd_freq3_1
+	rst			$08
+	call		freq_fm3_op1
+	jp			idle
+cmd_freq3_2
+	rst			$08
+	call		freq_fm3_op2
+	jp			idle
+cmd_freq3_3
+	rst			$08
+	call		freq_fm3_op1
+	call		freq_fm3_op2
+	jp			idle
+cmd_freq3_4
+	rst			$08
+	call		freq_fm3_op3
+	jp			idle
+cmd_freq3_5
+	rst			$08
+	call		freq_fm3_op3
+	jp			cmd_freq3_1+1
+cmd_freq3_6
+	rst			$08
+	call		freq_fm3_op3
+	jp			cmd_freq3_2+1
+cmd_freq3_7
+	rst			$08
+	call		freq_fm3_op3
+	jp			cmd_freq3_3+1
+cmd_freq3_8
+	rst			$08
+	call		freq_fm3_op4
+	jp			idle
+cmd_freq3_9
+	rst			$08
+	call		freq_fm3_op4
+	jp			cmd_freq3_1+1
+cmd_freq3_10
+	rst			$08
+	call		freq_fm3_op4
+	jp			cmd_freq3_2+1
+cmd_freq3_11
+	rst			$08
+	call		freq_fm3_op4
+	jp			cmd_freq3_3+1
+cmd_freq3_12
+	rst			$08
+	call		freq_fm3_op4
+	jp			cmd_freq3_4+1
+cmd_freq3_13
+	rst			$08
+	call		freq_fm3_op4
+	jp			cmd_freq3_5+1
+cmd_freq3_14
+	rst			$08
+	call		freq_fm3_op4
+	jp			cmd_freq3_6+1
+cmd_freq3_15
+	rst			$08
+	call		freq_fm3_op4
+	jp			cmd_freq3_7+1
+
+;======================================================================
+; Sanity check
+; Please update the addresses in mdssub.inc if these fail
+;----------------------------------------------------------------------
+	assert		z_argh = get_data+1
+	assert		z_argl = get_data+3
+	assert		z_mode = idle+1
+	assert		z_req = idle_cmd+1
+	assert		z_busy = busy_flag
+
 ; vim: set ft=z8a sw=4 ts=4 noet:
