@@ -3,11 +3,16 @@
 ;======================================================================
 
 z_arg		equ		$0009
-z_argh		equ		$0009
-z_argl		equ		$000b
-z_mode		equ		$0012
-z_req		equ		$0017
-z_busy		equ		$007f
+z_argh		equ		$0009	; low byte of argument
+z_argl		equ		$000b	; high byte of argument
+z_argp		equ		$000d	; 'c3' to convert pitch to f-num
+							; 'c9' to use argument as is
+z_mode		equ		$0012	; idle mode (don't set it directly)
+z_req		equ		$0017	; command request
+z_busy		equ		$007f	; busy flag (non-zero = z80 is writing to
+							; the FM chip
+z_stab		equ		$0a00	; sample table
+z_vtab		equ		$1000	; volume table
 
 ;======================================================================
 ; Z80/68K communication macros

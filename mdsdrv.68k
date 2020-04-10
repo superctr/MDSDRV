@@ -1519,7 +1519,7 @@ mds_z80_init
 	move.b	d1,(a1)+
 	addq.b	#1,d0
 	bne.s	@next_byte
-	cmpi.w	#$100,(a0)+
+	cmpi.w	#8,(a0)+					; last entry?
 	bne.s	@next_byte
 	rts
 
@@ -1527,7 +1527,7 @@ mds_z80_init
 	incbin	"mdssub.bin"
 	even
 @volume_table
-	dc.w	8,10,13,16,20,26,32,40,51,64,81,102,128,161,203,256
+	dc.w	256,203,161,128,102,81,64,51,40,32,26,20,16,13,10,8
 
 ;======================================================================
 ; PCM volume table
