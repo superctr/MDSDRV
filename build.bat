@@ -1,4 +1,5 @@
 @echo off
+rem build with Wine: wine cmd /c build.bat
 tools\sjasmplus.exe mdssub.z80 --raw=mdssub.bin --lst=mdssub.lst >error.txt
 if %ERRORLEVEL% neq 0 goto error
 tools\asm68k.exe /k /p /o ae- main.68k, main.bin >error.txt, , main.lst
