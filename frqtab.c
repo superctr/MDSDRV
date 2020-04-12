@@ -6,6 +6,7 @@ int main()
 	int octave;
 	int note = 0;
 	double ym2612_clk = 7670454;
+	double psg_clk = 3579545;
 	double ym2612_divider = ym2612_clk / 144./2048./32.;
 	double tuning = 440;
 	double fnum = 0;
@@ -30,9 +31,34 @@ int main()
 				printf(",");
 			printf("%d", (int)(fnum+0.5));
 		}
-		
+
 		if((note % 12) == 11)
-			printf("; offset %d-%d\n", note - (note % 12), note);	
+			printf("; offset %d-%d\n", note - (note % 12), note);
 	}
-	
+
+	printf("psgtab:\n");
+
+	offset = 12;
+	for(note = 0; note < 12; note ++)
+	{
+		fnum = psg_clk * (2. / (tuning * pow(2,(note-offset+3)/12.)) / 16.);
+
+		if(fnum > 2047)
+		{
+			printf("; offset %d-%d\n", note - (note % 12), note);
+			break;
+		}
+		else
+		{
+			if((note % 12) == 0)
+				printf("\tdc.w ");
+			else
+				printf(",");
+			printf("%d", (int)(fnum+0.5));
+		}
+
+		if((note % 12) == 11)
+			printf("; offset %d-%d\n", note - (note % 12), note);
+	}
+
 }

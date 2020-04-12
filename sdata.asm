@@ -1,6 +1,8 @@
 MML	equ 1
 	include "mdsseq.inc"
 
+sdpcm:
+	dc.l	pcm_tab
 sdcnt:
 	dc.w	SOUND_MAX
 sdtop:
@@ -317,4 +319,8 @@ bgm03:
 	dc.b	ins,@FM_1,vol,26,pat,@PAT_1,finish
 @T3
 	dc.b	ins,@FM_1,vol,28,l32-1,dtn,35,pat,@PAT_1,finish
+
+pcm_tab
+	dc.w	0		;no PCM
+
 ; vim: set ft=asm68k sw=4 ts=4 noet:

@@ -37,6 +37,7 @@ version_str
 mds_init
 @zero		equr d0
 
+	lea		6(a1),a1						;add offset to sdtop
 	move.l	a1,w_sdtop(work)				;set sdtop
 	lea		mds_psg_init(pc),a1
 	clr.l	@zero
@@ -244,7 +245,11 @@ mds_handle_request
 	subq.w	#1,@reqdata						;subtract sound codes
 	bmi.w	mds_handle_request_return			;0 to stop a track
 
+	move.l	w_sdtop(work),tmpa0
 	lea		mds_psg_init(pc),tmpa1
+
+	cmp.w	-2(tmpa0),@reqdata				;check if out of bounds
+	bcc.w	mds_handle_request_return
 
 	move.w	w_gtempo(work),@tempo
 	subq.w	#1,@tempo
@@ -254,8 +259,7 @@ mds_handle_request
 	move.w	@zero,w_seq_step(work,rnum)
 
 	lsl.w	#2,@reqdata						;request table
-	move.l	w_sdtop(work),tmpa0				;location of song header
-	adda.l	0(tmpa0,@reqdata),tmpa0
+	adda.l	0(tmpa0,@reqdata),tmpa0			;location of song header
 
 	move.l	tmpa0,tbase
 	adda.w	(tmpa0)+,tbase					;song base offset
@@ -284,8 +288,8 @@ mds_handle_request
 	bcs.s	@not_psg
 
 	move.b	@zero,t_psg_nmode(twork)		;noise mode initialize
-	move.l	tmpa1,t_psg_eg_addr(twork)		;psg eg initialize
-	move.w	#$000f,t_psg_eg_pos(twork)
+	move.w	tmpa1,t_psg_eg_addr(twork)		;psg eg initialize
+	move.w	#$ff0f,t_psg_eg_pos(twork)
 	bra.s	@not_fm
 
 @not_psg
@@ -548,6 +552,8 @@ mds_update_seq
 
 @cmd_ins_psg
 	move.w	tmpa0,t_psg_eg_addr(twork)
+	cmpi.w	#$ff00,t_psg_eg_pos(twork)		; don't reset stopped env
+	bcc.s	@cmd_dummy
 	move.w	#$000f,t_psg_eg_pos(twork)
 	rts
 
@@ -890,7 +896,8 @@ mds_get_psg_pitch
 	lsr.w	d2,d0							;octave shifted
 	rts
 @psg_freq_tab
-	dc.w	851,803,758,715,675,637,601,568,536,506,477,450,425
+	dc.w	1710,1614,1524,1438,1357,1281,1209,1141,1077,1017,960,906
+	dc.w	855
 
 ;======================================================================
 ; Note/octave division table
@@ -1316,6 +1323,16 @@ mds_fm0_update
 ;======================================================================
 ; PSG envelope update
 ;----------------------------------------------------------------------
+; This code is unfortunately not as nice as it could have been...
+; But to clear things up, this is the envelope state:
+;  psg_eg_addr   - Always points to beginning of envelope
+;  psg_eg_pos    - Envelope position. 0xff will stop the envelope.
+;  psg_eg_delay  - Low 4 bits contain the current PSG volume level
+;                  (where 0 is loudest and 15 is silent).
+;                  If the high 4 bits are zero, wait for a key off
+;                  event before reading the next byte. Otherwise, this
+;                  is the amount of frames (minus 1) before the next
+;                  byte is read from the envelope.
 mds_psg_update_env
 @pos	equr	d1
 @cmd	equr	d0
@@ -1347,15 +1364,16 @@ mds_psg_update_env
 	btst	#nf+nf_key_off,flag					;skip delays for keyoff
 	bne.s	@command
 	move.b	t_psg_eg_delay(twork),@cmd
-	beq.s	@hold
+	moveq	#$10,@pos
+	sub.b	@pos,@cmd
+	bcs.s	@hold
 
 ;----------------------------------------------------------------------
 ; envelope delay
 ;----------------------------------------------------------------------
-	cmpi.b	#$20,@cmd
+	cmp.b	@pos,@cmd
 	bcs.s	@command
 
-	subi.b	#$10,@cmd
 	move.b	@cmd,t_psg_eg_delay(twork)
 @hold
 	bclr	#nf+nf_vol,flag
@@ -1368,18 +1386,20 @@ mds_psg_update_env
 ;----------------------------------------------------------------------
 	clr.w	@pos
 	move.b	t_psg_eg_pos(twork),@pos
+	addq.b	#1,@pos
+	beq.s	@silence							; position FF = silence
 	move.w	t_psg_eg_addr(twork),tmpa1
 	adda.l	w_sdtop(work),tmpa1
-	move.b	0(tmpa1,@pos),@cmd
-	addq.b	#1,@pos
+	move.b	-1(tmpa1,@pos),@cmd
 
 ;----------------------------------------------------------------------
 ; sustain command
 ;----------------------------------------------------------------------
-	bclr	#nf+nf_key_off,flag
+	btst	#nf+nf_key_off,flag
 	beq.s	@no_release
 	cmpi.b	#$01,@cmd
 	bne.s	@no_jump							; key off can't jump
+	bclr	#nf+nf_key_off,flag
 	bra.s	@read_next
 
 @no_release
@@ -1407,7 +1427,7 @@ mds_psg_update_env
 	cmpi.b	#$10,@cmd
 	bcc.b	@no_silence
 @silence
-	clr.b	t_psg_eg_delay(twork)		; disable envelope for now
+	move.w	#$ff0f,t_psg_eg_pos(twork)	; disable envelope
 	bclr	#nf+nf_key_off,flag
 	moveq	#$1f,@cmd
 	or.b	chnid,@cmd
@@ -1418,6 +1438,7 @@ mds_psg_update_env
 	lsl.w	#8,@pos
 	move.b	@cmd,@pos
 	move.w	@pos,t_psg_eg_pos(twork)	; write both at the same time
+	bclr	#nf+nf_vol,flag
 
 ;----------------------------------------------------------------------
 ; It's very likely that this must be rewritten once global volume and
@@ -1459,6 +1480,7 @@ mds_psg_set_pitch
 	or.b	chnid,d1
 	move.b	d1,sound_psg
 	lsr.w	#4,d0
+	andi.b	#$7f,d1
 	move.b	d0,sound_psg
 	bra.w	mds_update_return
 
@@ -1509,7 +1531,7 @@ mds_z80_init
 	move.b	(a0)+,(a1)+
 	dbra	d0,@z80_loop
 
-	lea		z80_ram+$1000,a1			; calculate volume tables
+	lea		z80_ram+z_vtab,a1			; calculate volume tables
 	moveq	#0,d0
 @next_byte
 	move.b	d0,d1

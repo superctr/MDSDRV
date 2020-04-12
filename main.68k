@@ -14,14 +14,10 @@ DEBUG_SCREEN equ 1
 main:
 	jsr		vdp_init
 
-;	printa	2,5, #hello_str, 0, 5
-;	printa	3,5, #from_sega, 0, 20
-;	printa	3,5+5, #from_sega_really, 0, 20
-
 	bsr.w	pad_init
 
 	lea		r_driver,a0
-	lea		sdtop(pc),a1
+	lea		SDATA(pc),a1
 	bsr.w	mds_init
 
 	clr.w	d0
@@ -80,7 +76,7 @@ read_input:
 	subq.w	#1,(a0)
 	rts
 @down_pressed
-	cmp.w	#SOUND_MAX,(a0)
+	cmp.w	#$ff,(a0)
 	beq.s	@exit
 	addq.w	#1,(a0)
 	rts
@@ -259,6 +255,9 @@ print_instructions
 	p_end
 
 	even
+
+SDATA:
+	incbin "mdsseq.bin"
 	include "sdata.asm"
 	even
 
