@@ -605,7 +605,7 @@ mds_update_seq
 	move.b	0(tbase,@trackpos),@cmd
 	beq.s	@cmd_peg_off
 	lsl.w	#1,@cmd
-	move.w	0(tbase,@cmd),t_peg_addr(twork)
+	move.w	-2(tbase,@cmd),t_peg_addr(twork)
 	rts
 @cmd_peg_off
 	move.w	@cmd,t_peg_addr(twork)
@@ -886,11 +886,11 @@ mds_get_psg_pitch
 	move.b	mds_octave_table-mds_note_table(tmpa0,d0),d2	; octave
 	move.b	0(tmpa0,d0),d0
 	lea		@psg_freq_tab(pc,d0),tmpa0
-	move.w	2(tmpa0),d0
-	sub.w	(tmpa0),d0
-	ext.w	d1
+	move.w	(tmpa0),d0
+	sub.w	2(tmpa0),d0
 	mulu	d1,d0							;interpolate
 	swap	d0
+	neg.w	d0
 	add.w	(tmpa0),d0
 	lsr.b	#3,d2
 	lsr.w	d2,d0							;octave shifted
@@ -1041,8 +1041,9 @@ mds_pitch_update
 	rts
 
 @delay_not_done
-	addq.b	#1,d3									;increase delay
+	addq.b	#2,d3									;increase delay
 	beq.s	@no_peg									; ff = endless
+	subq.b	#1,d3
 	move.b	d3,t_peg_delay(twork)
 	rts
 
@@ -1355,6 +1356,7 @@ mds_psg_update_env
 	andi.l	#~((1<<(nf+nf_key_on))+(1<<(nf+nf_key_off))),flag
 
 	st		t_last_pitch(twork)	; Always rewrite pitch after PSG keyon
+	clr.w	t_peg_delay(twork)
 	bra.s	@command
 
 @no_keyon
