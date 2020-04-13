@@ -13,18 +13,13 @@ mds_top
 	bsr.w	mds_init
 	bsr.w	mds_update
 	bsr.w	mds_request
-	bsr.w	mds_ch_dummy
-	bsr.w	mds_ch_dummy
-	bsr.w	mds_ch_dummy
-	bsr.w	mds_ch_dummy
-	bsr.w	mds_ch_dummy
+	bsr.w	mds_command
 
 ;======================================================================
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"vaporware 200406"
-;	dc.b	"MDSDRV190525V0.0"
+	dc.b	"MDSDRV0.1 200413"
 
 ;======================================================================
 ; initialize sound driver
@@ -38,32 +33,42 @@ mds_init
 @zero		equr d0
 
 	lea		6(a1),a1						;add offset to sdtop
-	move.l	a1,w_sdtop(work)				;set sdtop
+	move.l	a1,w_sdtop(a0)					;set sdtop
 	lea		mds_psg_init(pc),a1
+
 	clr.l	@zero
-	move.l	@zero,w_request(work)			;clear request
-	move.l	@zero,2+w_request(work)
-	move.l	@zero,w_tempo(work)				;clear tempo
-	move.l	@zero,2+w_tempo(work)
-	move.l	@zero,w_counter(work)			;clear counter
-	move.l	@zero,2+w_counter(work)
-	move.l	@zero,w_seq_step(work)			;clear seq step
-	move.l	@zero,2+w_seq_step(work)
-	move.l	@zero,w_volume(work)			;clear trk volume
-	move.l	@zero,2+w_volume(work)
-	move.l	@zero,w_tmask(work)				;clear trk mask
-	move.l	@zero,2+w_tmask(work)
-	move.l	@zero,w_chmask(work)			;clear chmask
-	move.l	@zero,2+w_chmask(work)
+	move.l	@zero,w_request(a0)				;clear request
+	move.l	@zero,2+w_request(a0)
+	move.l	@zero,w_tempo(a0)				;clear tempo
+	move.l	@zero,2+w_tempo(a0)
+	move.l	@zero,w_counter(a0)				;clear counter
+	move.l	@zero,2+w_counter(a0)
+	move.l	@zero,w_seq_step(a0)			;clear seq step
+	move.l	@zero,2+w_seq_step(a0)
+	move.l	@zero,w_volume(a0)				;clear trk volume
+	move.l	@zero,2+w_volume(a0)
+	move.l	@zero,w_tmask(a0)				;clear trk mask
+	move.l	@zero,2+w_tmask(a0)
+	move.l	@zero,w_chmask(a0)				;clear chmask
+	move.l	@zero,2+w_chmask(a0)
 	move.w	@zero,w_fm3_mask				;clear fm3mask
-	move.w	#128,w_gtempo(work)				;initial tempo
-	lea		w_track(work),twork				;track addr
+	move.l	@zero,w_fm3_tl
+
+	move.w	#128,d1							; NTSC tempo
+	btst	#6,io_version
+	beq.s	@set_tempo
+	move.w	#107,d1							; PAL tempo
+@set_tempo
+	move.w	d1,w_gtempo(a0)					;set global tempo
+
+	lea		w_track(a0),a1					;track addr
 	move.w	#TCOUNT-1,d1
 @next_track
-	move.b	@zero,t_note_flag(twork)		;clear flag
-	move.l	a1,t_psg_eg_addr(twork)
-	move.w	#$000f,t_psg_eg_pos(twork)
-	move.b	#RCOUNT<<1,t_request_id(twork)	;channel is free
+	move.b	@zero,t_note_flag(a1)			;clear flag
+	move.w	@zero,t_peg_addr(a1)
+	move.l	a1,t_psg_eg_addr(a1)
+	move.w	#$ff0f,t_psg_eg_pos(a1)
+	move.b	#RCOUNT<<1,t_request_id(a1)		;channel is free
 
 	lea		TSIZE(twork),twork				;next track
 	dbra	d1,@next_track
@@ -81,6 +86,76 @@ mds_halt
 
 	reset_z80
 	start_z80
+	rts
+
+;======================================================================
+; Sound request
+;----------------------------------------------------------------------
+; INPUT
+;	a0 - pointer to work area
+;	d0 - request sound number
+;	d1 - request priority, range 0-3.
+; TRASHES
+;	d0,d1
+mds_request
+	ori.w	#(1<<rf_active)+(1<<rf_stop),d0
+	andi.w	#3,d1
+	lsl.w	d1
+	move.w	d0,w_request(a0,d1)
+	rts
+
+;======================================================================
+; Command request
+;----------------------------------------------------------------------
+; INPUT
+;	a0 - pointer to work area
+;	d0 - command #
+;	d1 - command parameters
+; OUTPUT
+;   d0 - return value (if used)
+; TRASHES
+;	a0,a1,d0,d1
+mds_command
+	cmpi.b	#4,d0							; max command
+	bcc.s	@cmd_dummy
+	lsl.w	#2,d0
+	jmp		@cmd_table(pc,d0)
+@cmd_dummy
+	rts
+@cmd_table
+	bra.w	@get_status
+	bra.w	@get_count
+	bra.w	@get_gtempo
+	bra.w	@set_gtempo
+
+;----------------------------------------------------------------------
+; command 0x00 - get status
+;----------------------------------------------------------------------
+@get_status
+	lsl.w	#1,d1
+	move.w	w_tmask(a0,d0),d1
+	rts
+
+;----------------------------------------------------------------------
+; command 0x01 - get sound count
+;----------------------------------------------------------------------
+@get_count
+	move.l	w_sdtop(a0),a0
+	move.w	-2(a0),d0
+	rts
+
+;----------------------------------------------------------------------
+; command 0x02 - get global tempo
+;----------------------------------------------------------------------
+@get_gtempo
+	move.w	w_gtempo(a0),d0
+	rts
+
+;----------------------------------------------------------------------
+; command 0x03 - set global tempo
+;----------------------------------------------------------------------
+@set_gtempo
+	move.w	d0,w_gtempo(a0)
 	rts
 
 ;======================================================================
@@ -340,22 +415,6 @@ mds_handle_request
 	clr.w	w_tmask(work,rnum)				;clear trackmask
 	clr.w	w_chmask(work,rnum)				;clear chmask
 	bra.w	mds_handle_request_return
-
-;======================================================================
-; Request track
-;----------------------------------------------------------------------
-; INPUT
-;	a0 - pointer to work area
-;	d0 - request track
-;	d1 - request priority, range 0-3.
-; TRASHES
-;	d0,d1
-mds_request
-	ori.w	#(1<<rf_active)+(1<<rf_stop),d0
-	andi.w	#3,d1
-	lsl.w	d1
-	move.w	d0,w_request(a0,d1)
-	rts
 
 ;======================================================================
 ; update track sequences
