@@ -2,7 +2,8 @@
 ============================
 
 This document describes the public interfaces of `mdsdrv`.
-These functions are used by the main 68000 program to interface with the sound driver.
+These functions are used by the main 68000 program to interface with
+the sound driver.
 
 Functions
 ---------
@@ -12,7 +13,8 @@ Functions
 - **Address**: `mdsdrv+0`
 - **Input**:
 	- `a0` - Pointer to work area in RAM.
-	- `a1` - Pointer to sequence data (`mdsseq.bin`)
+	- `a1` - Pointer to sound data (`mdsseq.bin`). Must be an even
+		address.
 - **Trashes**:
 	- `a0-a1`, `d0-d1`.
 

@@ -4,8 +4,6 @@ A sound driver for Sega Mega Drive
 
 ## Features
 - Runs on the 68000
-- Fully relocatable code - supports any assembler or toolchain by
-	including the binary blob.
 - 16 monophonic tracks that can be used for BGM or sound effects.
 	Each track can be assigned to a channel with 4 levels of priority.
 - Supports 6 FM + 4 PSG
@@ -18,6 +16,9 @@ A sound driver for Sega Mega Drive
 - Equal temperament scale with 256 steps per semitone, allowing for
 	easy detune or pitch slide effects.
 - Unencumbered source code
+- Fully position-independent code - supports any assembler or toolchain
+	by including the binary blob.
+- Uses approximately 1 kb (1024 bytes) of RAM.
 
 ### Upcoming features
 - 2 channel PCM playback with volume control
