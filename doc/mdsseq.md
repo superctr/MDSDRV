@@ -1,7 +1,7 @@
-MDSDRV Sound Data Reference
-===========================
+`mdsdrv` Sound Data Reference
+=============================
 
-This document describes the public data structures of MDSDRV, as well
+This document describes the public data structures of `mdsdrv`, as well
 as the `.MDS` format used for data exchange.
 
 This document may contain some minor errors until all the bugs have
