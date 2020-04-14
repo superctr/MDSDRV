@@ -20,6 +20,7 @@ mds_top
 ;----------------------------------------------------------------------
 version_str
 	dc.b	"MDSDRV0.1 200413"
+version_str_end
 
 ;======================================================================
 ; initialize sound driver
@@ -116,20 +117,38 @@ mds_request
 ; TRASHES
 ;	a0,a1,d0,d1
 mds_command
-	cmpi.b	#4,d0							; max command
+@cmd_max	equ 6
+	cmpi.b	#@cmd_max,d0						; max command
 	bcc.s	@cmd_dummy
 	lsl.w	#2,d0
 	jmp		@cmd_table(pc,d0)
 @cmd_dummy
 	rts
 @cmd_table
+	bra.w	@get_cmd_count
+	bra.w	@get_sound_count
 	bra.w	@get_status
-	bra.w	@get_count
+	bra.w	@get_version
 	bra.w	@get_gtempo
 	bra.w	@set_gtempo
 
 ;----------------------------------------------------------------------
-; command 0x00 - get status
+; command 0x00 - get command count
+;----------------------------------------------------------------------
+@get_cmd_count
+	move.w	#@cmd_max,d0
+	rts
+
+;----------------------------------------------------------------------
+; command 0x01 - get sound count
+;----------------------------------------------------------------------
+@get_sound_count
+	move.l	w_sdtop(a0),a0
+	move.w	-2(a0),d0
+	rts
+
+;----------------------------------------------------------------------
+; command 0x02 - get status
 ;----------------------------------------------------------------------
 @get_status
 	lsl.w	#1,d1
@@ -137,22 +156,22 @@ mds_command
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x01 - get sound count
+; command 0x03 - get version string
 ;----------------------------------------------------------------------
-@get_count
-	move.l	w_sdtop(a0),a0
-	move.w	-2(a0),d0
+@get_version
+	lea		version_str(pc),a0
+	move.w	#version_str_end-version_str,d0
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x02 - get global tempo
+; command 0x04 - get global tempo
 ;----------------------------------------------------------------------
 @get_gtempo
 	move.w	w_gtempo(a0),d0
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x03 - set global tempo
+; command 0x05 - set global tempo
 ;----------------------------------------------------------------------
 @set_gtempo
 	move.w	d0,w_gtempo(a0)
@@ -448,6 +467,7 @@ mds_update_seq
 
 @cmd_rest
 	bset	#nf+nf_key_off,flag
+	bclr	#nf+nf_key_on,flag
 	move.b	@cmd,t_rest_time(twork)			;00-7f - rest
 	move.b	@cmd,t_counter(twork)
 	move.w	@trackpos,t_position(twork)
@@ -490,6 +510,7 @@ mds_update_seq
 
 @cmd_rest2
 	bset	#nf+nf_key_off,flag				;80 - rest 2
+	bclr	#nf+nf_key_on,flag
 	move.b	t_rest_time(twork),t_counter(twork)
 	move.w	@trackpos,t_position(twork)
 	bra.w	mds_update_seq_return
@@ -677,11 +698,16 @@ mds_update_seq
 ; bit 7 = enable right speaker
 ;----------------------------------------------------------------------
 @cmd_pan
+	move.b	t_channel_id(twork),@cmd
+	cmpi.b	#6,@cmd							; fm only
+	bcc.s	@cmd_pan_dummy
+
 	move.b	t_fm_pan_lfo(twork),@cmd
 	andi.b	#$3f,@cmd
 	or.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_fm_pan_lfo(twork)
 	bset	#nf+nf_pan_lfo,flag
+@cmd_pan_dummy
 	rts
 
 ;----------------------------------------------------------------------
@@ -1413,6 +1439,7 @@ mds_psg_update_env
 	moveq	#$1f,@cmd								;silence
 	move.w	@cmd,t_psg_eg_pos(twork)
 	andi.l	#~((1<<(nf+nf_key_on))+(1<<(nf+nf_key_off))),flag
+	bset	#nf+nf_sustain,flag
 
 	st		t_last_pitch(twork)	; Always rewrite pitch after PSG keyon
 	clr.w	t_peg_delay(twork)
@@ -1423,7 +1450,9 @@ mds_psg_update_env
 ; envelope disable
 ;----------------------------------------------------------------------
 	btst	#nf+nf_key_off,flag					;skip delays for keyoff
-	bne.s	@command
+	bne.s	@key_off
+	btst	#nf+nf_sustain,flag
+	beq.s	@command
 	move.b	t_psg_eg_delay(twork),@cmd
 	moveq	#$10,@pos
 	sub.b	@pos,@cmd
@@ -1441,6 +1470,12 @@ mds_psg_update_env
 	bne.s	@write_vol
 	rts
 
+@key_off
+;----------------------------------------------------------------------
+; key_off
+;----------------------------------------------------------------------
+	andi.l	#~((1<<(nf+nf_sustain))+(1<<(nf+nf_key_off))),flag
+
 @command
 ;----------------------------------------------------------------------
 ; read command
@@ -1456,11 +1491,11 @@ mds_psg_update_env
 ;----------------------------------------------------------------------
 ; sustain command
 ;----------------------------------------------------------------------
-	btst	#nf+nf_key_off,flag
-	beq.s	@no_release
+	btst	#nf+nf_sustain,flag
+	bne.s	@no_release
 	cmpi.b	#$01,@cmd
 	bne.s	@no_jump							; key off can't jump
-	bclr	#nf+nf_key_off,flag
+	bset	#nf+nf_sustain,flag
 	bra.s	@read_next
 
 @no_release

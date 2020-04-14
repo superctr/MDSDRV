@@ -49,6 +49,7 @@ nf_slur			rs.b	1			; slur next note
 nf_ins			rs.b	1			; load new instrument
 nf_vol			rs.b	1			; load new volume
 nf_pan_lfo		rs.b	1			; load new pan/lfo
+nf_sustain		equ		nf_pan_lfo	; PSG envelope sustain
 nf_enabled		rs.b	1			; envelopes enabled(must be bit7!)
 
 ;======================================================================
