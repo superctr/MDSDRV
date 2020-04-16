@@ -628,6 +628,7 @@ mds_update_seq
 	move.l	24(tmpa0),t_fm_tl(twork)
 	move.b	28(tmpa0),t_fm_alg(twork)
 	move.b	29(tmpa0),t_ins_trs(twork)
+	st		t_last_pitch(twork)				; may reset pitch
 	rts
 
 @cmd_ins_psg
@@ -1631,6 +1632,7 @@ mds_z80_init
 	moveq	#0,d0
 @next_byte
 	move.b	d0,d1
+	eori.b	#$80,d1						;<-- for unsigned samples
 	ext.w	d1
 	muls	(a0),d1
 	lsr.w	#8,d1
