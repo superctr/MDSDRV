@@ -14,6 +14,10 @@ z_busy		equ		$007f	; busy flag (non-zero = z80 is writing to
 z_stab		equ		$0a00	; sample table
 z_vtab		equ		$1000	; volume table
 
+zc_pcm1_start	equ		$17*3
+zc_pcm1_stop	equ		$19*3
+zc_pcm1_vol		equ		$1b*3
+
 ;======================================================================
 ; Z80/68K communication macros
 ;======================================================================
@@ -28,8 +32,11 @@ mds_z80_wait_req	macro
 @wait_z80\@
 	btst.b	#0,(zreq)
 	bne.s	@wait_z80\@
+	tst.b	z_busy(zram)
+	bmi.s	@still_busy\@
 	cmpi.b	#$70-1,z_req(zram)
 	bcc.s	@done\@
+@still_busy\@
 	move.w	#$0000,(zreq)		; z80 is already processing a request
 	movem.l	d0-d4,-(sp)								; 8+40 : 48
 	movem.l	(sp)+,d0-d4								;      : 96	
@@ -67,13 +74,13 @@ mds_z80_start		macro
 ;----------------------------------------------------------------------
 mds_z80_cmd0		macro cmd
 	mds_z80_wait_req
-	move.w	cmd,z_req(zram)
+	move.b	\cmd,z_req(zram)
 	mds_z80_start
 	endm
 mds_z80_cmd2		macro cmd,arg
 	mds_z80_wait_req
-	move.w	cmd,z_req(zram)
-	movep.w	arg,z_arg(zram)
+	move.b	\cmd,z_req(zram)
+	movep.w	\arg,z_arg(zram)
 	mds_z80_start
 	endm
 	endif

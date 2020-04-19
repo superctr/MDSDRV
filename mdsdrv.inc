@@ -160,7 +160,9 @@ w_volume		rs.w	RCOUNT
 w_tmask			rs.w	RCOUNT		;track mask
 w_chmask		rs.w	RCOUNT		;channel usage mask
 
-w_fm3_mask		rs.b	1
+w_pcm_enable	rs.b	2			;pcm keyon enable
+
+w_fm3_mask		rs.b	1			;fm3 keyon operator mask
 w_fm3_alg		rs.b	1
 w_fm3_tl		rs.b	4
 

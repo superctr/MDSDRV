@@ -74,11 +74,11 @@ idle_cmd
 	jp		cmd_freq_1		; 00 | fm channel 1 frequency
 	jp		cmd_freq_2		; 01 | fm channel 2 frequency
 	jp		cmd_freq_3		; 02 | fm channel 3 frequency
-	jp		cmd_write_0		; 03 | fm port 0 write
+	jp		idle_cmd		; 03 | nop
 	jp		cmd_freq_4		; 04 | fm channel 4 frequency
 	jp		cmd_freq_5		; 05 | fm channel 5 frequency
 	jp		cmd_freq_6		; 06 | fm channel 6 frequency
-	jp		cmd_write_1		; 07 | fm port 1 write
+	jp		idle_cmd		; 07 | nop
 	jp		cmd_freq3_1		; 08 | fm channel 3 op 1 frequency
 	jp		cmd_freq3_2		; 09 | fm channel 3 op 2 frequency
 	jp		cmd_freq3_3		; 0a | fm channel 3 op 1+2 frequency
@@ -104,7 +104,7 @@ idle_cmd
 	jp		idle_cmd		; 1e | nop
 	jp		idle_cmd		; 1f | nop
 	jp		idle_cmd		; 20 | nop
-	jp		idle_cmd		; 21 | nop
+	jp		idle_cmd		; 21 | special command - reset PCM mode
 	rst		$00				; 22 | force reset of sound driver
 ;--------------------------------+-------------------------------------
 ; Please note that the busy flag must be at position 7f. This is so
@@ -191,23 +191,36 @@ buffer_end
 ; driver initialize
 ;----------------------------------------------------------------------
 start
-	xor		a
 	ld		ix,$4000						; fm chip port
 	ld		iy,$ffff						; force bank switch
 	ld		de,buffer
 	exx
 	ld		hl,buffer_end-1					; sample buffer
 	ld		(hl),$80
+	dec		hl
+	ld		(hl),$80
 	ld		bc,busy_flag					; communication flag
 	or		c
 	ld		(bc),a
 	ld		(ix+0),$24						; default timer period
-	ld		(ix+1),$ff						; 3fc / 13316 hz
-	ld		(ix+0),$26
-	ld		(ix+1),$00
+	ld		(ix+1),$ff						;   1/(144*1024-n)/7670454
+;	ld		(ix+0),$25						; 3fc = 13316 hz
+;	ld		(ix+1),$00						;          = ~269 cycles
+	ld		(ix+0),$25						; 3fd = 17755 hz
+	ld		(ix+1),$01						;          = ~201 cycles
 	ld		(ix+0),$27						; timer reset
 	ld		(ix+1),$15
+	ld		(ix+0),$2a						; default dac
+	ld		(ix+1),$80
 	jp		idle_pcm0						; pcm off
+
+;======================================================================
+; clear busy flag if 68k requested a command while PCM samples were
+; updating
+;----------------------------------------------------------------------
+clear_busy
+	ld		(bc),a
+	jp		idle_cmd
 
 ;======================================================================
 ; PCM macros
@@ -231,15 +244,27 @@ start
 		inc		l
 		jp		nz,idle_cmd					; data remaining in buffer
 		ld		a,low(buffer)
-		ld		e,a							; reset buffer address
+		ld		l,a							; reset buffer address
 		exx
 		ld		e,a
 	endm
 ;----------------------------------------------------------------------
+; this macro implements a fancy anti-race condition mechanism
+; the problem arose since jumping to 'idle' directly to set the idle
+; mode will also overwrite the 68k command. so we 1. set bit 7 of the
+; busy flag. 2. handle incoming command, 3. clear request byte and
+; call idle_fm (to clear the busy flag).
 	macro end_pcm
 		exx
 		ld		sp,stack
-		jp		idle_cmd
+		ld		a,l							; l always has bit 7 set
+		ld		(bc),a
+		ld		a,(z_req)
+		cp		$70
+		ld		a,b
+		jp		c,clear_busy				; 68k already requested
+		ld		(z_req),a
+		jp		idle_fm
 	endm
 ;----------------------------------------------------------------------
 	macro set_bank
@@ -273,10 +298,11 @@ start
 		if mix = 1							; pcm1 + clear pcm2
 			xor		a
 			ldi
+			ld (de),a
 			dup		BUFCOUNT-1
-				ld		(de),a
 				inc		e
 				ldi
+				ld		(de),a
 			edup
 		endif
 		if mix = 2
@@ -305,7 +331,9 @@ start
 idle_pcm0
 	or		c
 	ld		(bc),a							; set busy flag
-	ld		(ix+0),$2b						; disable pcm
+	ld		(ix+0),$2a						; default dac
+	ld		(ix+1),$80
+	ld		(ix+0),$2b						; disable dac
 	ld		(ix+1),$00
 	ld		a,$fe							; disable PCM output
 	ld		(z_mode),a
@@ -448,10 +476,12 @@ pcm12_no_timeout
 		ld		c,6
 		ld		de,var
 		ldir
+		ld		l,a							;restore hl
+		ld		h,b
 		ld		c,low(busy_flag)
 		ld		a,(z_mode)
-		cp		$6f
-		jr		nc,.setmode
+		cp		c
+		jr		c,.setmode
 		ld		a,$70
 .setmode
 		or		mask
@@ -468,10 +498,8 @@ cmd_pcm1_start
 pcm_enable
 	ld		(busy_flag),a
 	ld		(z_mode),a
-	ld		(ix+0), $2B
-	ld		(ix+1), $80
-	ld		(ix+0), $2A
-	ld		(ix+1), $80
+	ld		(ix+0),$2b						; enable dac
+	ld		(ix+1),$80
 	ld		a,b
 	ld		(busy_flag),a
 	jp		idle
@@ -490,16 +518,16 @@ cmd_pcm2_start
 ;----------------------------------------------------------------------
 cmd_pcm1_stop
 	ld		a,(z_mode)
-	cp		$6f
-	jp		nc,idle
+	cp		c
+	jp		c,idle
 	and		$fb
 	ld		(z_mode),a
 	jp		idle
 
 cmd_pcm2_stop
 	ld		a,(z_mode)
-	cp		$6f
-	jp		nc,idle
+	cp		c
+	jp		c,idle
 	and		$f7
 	ld		(z_mode),a
 	jp		idle

@@ -28,6 +28,7 @@ version_str_end
 ; INPUT
 ;	a0 - pointer to work area
 ;   a1 - pointer to request base table (sdtop)
+;   a2 - pointer to PCM data
 ; TRASHES
 ;   a0-a1, d0-d1
 mds_init
@@ -52,6 +53,7 @@ mds_init
 	move.l	@zero,2+w_tmask(a0)
 	move.l	@zero,w_chmask(a0)				;clear chmask
 	move.l	@zero,2+w_chmask(a0)
+	move.w	@zero,w_pcm_enable				;clear pcm
 	move.w	@zero,w_fm3_mask				;clear fm3mask
 	move.l	@zero,w_fm3_tl
 
@@ -302,7 +304,7 @@ mds_update_return				equ *
 	@ch_mapping		#2,mds_fm0_update		;2
 	@ch_mapping		#4,mds_fm1_update		;3
 	@ch_mapping		#5,mds_fm1_update		;4
-	@ch_mapping		#6,mds_fm1_update		;5
+	@ch_mapping		#6,mds_fm6_update		;5
 	@ch_mapping		#-128,mds_psg_update	;6
 	@ch_mapping		#-96,mds_psg_update		;7
 	@ch_mapping		#-64,mds_psg_update		;8
@@ -558,7 +560,7 @@ mds_update_seq
 	bra.w	@cmd_fmcreg						;ed fm channel reg write
 	bra.w	@cmd_fmtl						;ee fm tl write
 	bra.w	@cmd_fmtlm						;ef fm tl change
-	bra.w	@cmd_finish						;f0 ** reserved for pcm ins
+	bra.w	@cmd_pcm						;f0 pcm instrument
 	bra.w	@cmd_finish						;f1
 	bra.w	@cmd_finish						;f2
 	bra.w	@cmd_finish						;f3
@@ -618,6 +620,7 @@ mds_update_seq
 	move.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_ins(twork)
 	bset	#nf+nf_ins,flag
+	bclr	#cf+cf_pcm_control,flag
 	lsl.w	@cmd
 	movea.w	0(tbase,@cmd),tmpa0				; instr address
 	move.b	t_channel_id(twork),@cmd
@@ -900,6 +903,18 @@ mds_update_seq
 	move.w	t_stack(twork,@cmd),@trackpos		; pop return address
 	addq.w	#4,sp								;break out of command
 	bra.w	@cmd_tie
+
+;----------------------------------------------------------------------
+; pcm - enable PCM
+;----------------------------------------------------------------------
+; CAUTION: this command must only be executed on FM6 or dummy channel
+;----------------------------------------------------------------------
+@cmd_pcm
+	move.b	0(tbase,@trackpos),@cmd
+	lsl.w	@cmd
+	move.b	1(tbase,@cmd),t_ins(twork)			; instr address
+	bset	#cf+cf_pcm_control,flag
+	rts
 
 ;======================================================================
 ; check channel priority
@@ -1277,6 +1292,15 @@ mds_fm_vol_table
 ;  work, twork, chnid
 ; TRASHES:
 ;  chnid
+mds_fm6_update
+	btst	#cf+cf_pcm_control,flag
+	bne.w	mds_pcm1_update
+	tst.b	w_pcm_enable(work)
+	beq.s	mds_fm1_update
+
+	clr.b	w_pcm_enable(work)			; send key off if we just
+	mds_z80_cmd0	#zc_pcm1_stop		; switched from PCM to FM
+
 mds_fm1_update
 	bset	#17,chnid								; $4002
 mds_fm0_update
@@ -1404,8 +1428,8 @@ mds_fm0_update
 	mds_z80_start
 
 @no_key_on
-
 	bra.w	mds_update_return
+
 
 ;======================================================================
 ; PSG envelope update
@@ -1610,7 +1634,87 @@ mds_psgn_update
 mds_dummy_update
 	bra.w	mds_update_return
 
+;======================================================================
+; PCM1 update
+;----------------------------------------------------------------------
+mds_pcm1_update
+	moveq	#0,d0									;pcm1 offset
+	tst.l	flag
+	bmi.s	@no_disable
+	clr.b	w_pcm_enable(work)
+	bra.w	mds_pcm_key_off
 
+@no_disable
+	tst.b	w_pcm_enable(work)				; send key off if we just
+	bne.s	@no_fm_key_off					; switched from FM to PCM
+
+	st.b	w_pcm_enable(work)
+	mds_z80_wait_fm
+	move.b	#$28,$4002(zram)
+	nop
+	nop
+	move.b	#$02,$4003(zram)						;12 cycles + 2 nop
+	mds_z80_start
+
+@no_fm_key_off
+	bclr	#nf+nf_pan_lfo,flag
+	beq.s	mds_pcm_update
+
+	move.b	t_fm_pan_lfo(twork),d1			; FM6 can always control
+	mds_z80_wait_fm							; the panning
+	move.b	#$b6,$4002(zram)
+	nop
+	nop
+	move.b	d1,$4003(zram)
+	mds_z80_start
+	bra.s	mds_pcm_update
+
+;======================================================================
+; PCM2 update
+;----------------------------------------------------------------------
+mds_pcm2_update
+	moveq	#3,d0									;pcm2 offset
+	st.b	w_pcm_enable(work)
+	tst.l	flag
+	bmi.s	mds_pcm_update
+	clr.b	1+w_pcm_enable(work)
+	bra.w	mds_pcm_key_off
+
+;======================================================================
+; PCM common update
+;----------------------------------------------------------------------
+mds_pcm_update
+	bclr	#nf+nf_key_on,flag
+	bne.s	mds_pcm_key_on
+	bclr	#nf+nf_key_off,flag
+	bne.w	mds_pcm_key_off
+	bclr	#nf+nf_vol,flag
+	beq.s	@no_set_vol
+
+	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
+	sub.b	t_vol(twork),d1
+	lsl.w	#8,d1
+	addi.b	#zc_pcm1_vol,d0
+	mds_z80_cmd2	d0,d1
+@no_set_vol
+	bra.w	mds_update_return
+
+mds_pcm_key_on
+	bclr	#nf+nf_vol,flag
+	bclr	#nf+nf_key_off,flag
+	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
+	sub.b	t_vol(twork),d1
+	lsl.w	#8,d1
+	move.b	t_ins(twork),d1
+	addi.b	#zc_pcm1_start,d0
+	mds_z80_cmd2	d0,d1							; key on pcm
+	bra.w	mds_update_return
+
+mds_pcm_key_off
+	bclr	#nf+nf_vol,flag
+	addi.b	#zc_pcm1_stop,d0
+	mds_z80_cmd0	d0								; key off pcm
+	bra.w	mds_update_return
 
 ;======================================================================
 ; Z80 access functions
@@ -1621,6 +1725,7 @@ mds_dummy_update
 ; Upload Z80 program. Assumes Z80 is already stopped
 ;----------------------------------------------------------------------
 mds_z80_init
+	move.l	a0,-(sp)					;backup work
 	lea		@z80_driver(pc),a0			;upload Z80 driver
 	lea		z80_ram,a1
 	move.w	#@volume_table-@z80_driver-1,d0
@@ -1641,6 +1746,35 @@ mds_z80_init
 	bne.s	@next_byte
 	cmpi.w	#8,(a0)+					; last entry?
 	bne.s	@next_byte
+
+	lea		z80_ram+z_stab,a1
+	move.l	(sp)+,a0					; get work
+	move.l	(a0),a0
+	adda.l	-6(a0),a0					; get pcm table
+	move.w	(a0)+,d0
+	beq.s	@skip
+	subq.w	#1,d0
+@next_pcm
+	move.l	(a0)+,d1					; get addr
+	add.l	a2,d1
+	lsl.l	#1,d1
+	swap	d1
+	move.b	#0,(a1)+					; bank
+	move.b	d1,(a1)+
+	swap	d1
+	lsr.w	#1,d1
+	ori.w	#$8000,d1
+	move.b	d1,(a1)+					; address
+	ror.w	#8,d1
+	move.b	d1,(a1)+
+	move.w	(a0)+,d1
+	andi.w	#$fff0,d1					; div by 16
+	move.b	d1,(a1)+					; length
+	ror.w	#8,d1
+	addq.b	#1,d1						; add $100
+	move.b	d1,(a1)+
+	dbra	d0,@next_pcm
+@skip
 	rts
 
 @z80_driver
@@ -1649,7 +1783,5 @@ mds_z80_init
 @volume_table
 	dc.w	256,203,161,128,102,81,64,51,40,32,26,20,16,13,10,8
 
-;======================================================================
-; PCM volume table
 ;----------------------------------------------------------------------
 ; vim: set ft=asm68k sw=4 ts=4 noet:
