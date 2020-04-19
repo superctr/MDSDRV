@@ -18,6 +18,10 @@ zc_pcm1_start	equ		$17*3
 zc_pcm1_stop	equ		$19*3
 zc_pcm1_vol		equ		$1b*3
 
+zc_pcm2_start	equ		$18*3
+zc_pcm2_stop	equ		$1a*3
+zc_pcm2_vol		equ		$1c*3
+
 ;======================================================================
 ; Z80/68K communication macros
 ;======================================================================

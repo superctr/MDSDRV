@@ -226,10 +226,10 @@ clear_busy
 ; PCM macros
 ;----------------------------------------------------------------------
 	macro check_pcm
-		ld		a,(ix+0)
+		ld		a,($4000)
 		rrca
 		jp		nc,idle_cmd
-		or		c
+		;or		c
 		ld		(bc),a						; set busy flag
 		ld		(ix+0),$27					; timer reset
 		ld		(ix+1),$15
@@ -312,7 +312,7 @@ clear_busy
 				inc		e
 				ldi
 			edup
-			ld		e,d
+			ld		d,e
 		endif
 		push	bc
 		push	hl
@@ -412,7 +412,7 @@ pcm2_vol2	equ	$+1
 ; after reading the first byte of the second channel, we can output
 ; the first mixed sample already if needed
 ;----------------------------------------------------------------------
-	ld		a,(ix+0)
+	ld		a,($4000)
 	rrca
 	jp		nc,pcm12_no_timeout
 	exx
@@ -449,7 +449,7 @@ pcm12_no_timeout
 		inc		e
 		ldi
 	edup
-	ld		e,d
+	ld		d,e
 	push	bc
 	push	hl
 
@@ -496,12 +496,12 @@ cmd_pcm1_start
 	pcm_start	pcm1,$04
 
 pcm_enable
-	ld		(busy_flag),a
+	ld		(bc),a
 	ld		(z_mode),a
 	ld		(ix+0),$2b						; enable dac
 	ld		(ix+1),$80
 	ld		a,b
-	ld		(busy_flag),a
+	ld		(bc),a
 	jp		idle
 
 cmd_pcm2_start
@@ -519,7 +519,7 @@ cmd_pcm2_start
 cmd_pcm1_stop
 	ld		a,(z_mode)
 	cp		c
-	jp		c,idle
+	jp		nc,idle
 	and		$fb
 	ld		(z_mode),a
 	jp		idle
@@ -527,7 +527,7 @@ cmd_pcm1_stop
 cmd_pcm2_stop
 	ld		a,(z_mode)
 	cp		c
-	jp		c,idle
+	jp		nc,idle
 	and		$f7
 	ld		(z_mode),a
 	jp		idle
