@@ -382,7 +382,6 @@ mds_handle_request
 
 	cmp.w	#ct_psg<<8,@reqdata
 	bcs.s	@not_psg
-
 	move.b	@zero,t_psg_nmode(twork)		;noise mode initialize
 	move.w	tmpa1,t_psg_eg_addr(twork)		;psg eg initialize
 	move.w	#$ff0f,t_psg_eg_pos(twork)
@@ -743,6 +742,12 @@ mds_update_seq
 	st		t_last_pitch(twork)
 	move.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_psg_nmode(twork)
+	beq.s	@cmd_nmode_settrs
+; TODO: currently force transpose for noise mode to match the ctrmml
+; VGM converter
+	moveq	#12,@cmd
+@cmd_nmode_settrs
+	move.b	@cmd,t_trs(twork)
 	rts
 
 ;----------------------------------------------------------------------
@@ -1084,6 +1089,7 @@ mds_pitch_update
 	addq.w	#1,d1
 
 	muls	d3,d1
+	asr.w	#1,d1
 	add.w	t_pitch(twork),d1						;d1=new_pitch
 
 	move.w	d0,d3
