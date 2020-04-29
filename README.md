@@ -34,6 +34,11 @@ is capable of building the sound data files (`mdsseq.bin` and
 	# creates 'mdsseq.bin' and 'mdspcm.bin'
 	mdslink -o mdsseq.bin mdspcm.bin mymusic.mml ...
 
+Sound data files can be in MML (Music Macro Language) or MDS formats.
+For information on the MML dialect used by `mdslink`, see the `ctrmml`
+documentation. For information on the MDS binary format, see
+[mdsseq.md](doc/mdsseq.md).
+
 ### Building `mdsdrv`
 All required tools for building are already in the repository, you just
 need to run `build.bat`. These are Windows executables, so for other
