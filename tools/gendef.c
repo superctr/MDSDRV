@@ -1,3 +1,7 @@
+/*
+	'mdsseq.inc' generator.
+	Usage: gcc tools/gendef.cpp & a > mdsseq.inc
+*/
 #include "stdio.h"
 
 const char* note_name[17] =

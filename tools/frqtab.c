@@ -1,3 +1,7 @@
+/*
+	FM & PSG frequency table generator
+*/
+
 #include "stdio.h"
 #include "math.h"
 

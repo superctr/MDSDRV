@@ -17,7 +17,8 @@ main:
 	bsr.w	pad_init
 
 	lea		r_driver,a0
-	lea		SDATA(pc),a1
+	lea		MDSSEQ(pc),a1
+	lea 	MDSPCM(pc),a2
 	bsr.w	mds_init
 
 	clr.w	d0
@@ -256,9 +257,16 @@ print_instructions
 
 	even
 
-SDATA:
+MDSSEQ:
 	incbin "mdsseq.bin"
-	include "sdata.asm"
+	even
+
+	if *&$7fff
+	dcb.b	$8000-(*&$7fff),$ff
+	endif
+
+MDSPCM:
+	incbin "mdspcm.bin"
 	even
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:

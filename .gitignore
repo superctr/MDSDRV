@@ -7,6 +7,10 @@ ctrmml
 main.bin
 mdsdrv.bin
 mdssub.bin
+mdsseq.bin
+mdspcm.bin
 a.exe
 a.out
 error.txt
+*~
+*.swp
