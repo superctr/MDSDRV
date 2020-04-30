@@ -16,11 +16,6 @@ main:
 
 	bsr.w	pad_init
 
-	lea		r_driver,a0
-	lea		MDSSEQ(pc),a1
-	lea 	MDSPCM(pc),a2
-	bsr.w	mds_init
-
 	clr.w	d0
 	move.w	d0,r_intcnt
 	move.w	d0,r_pcount0
@@ -30,7 +25,15 @@ main:
 	bsr.w	print_command
 	bsr.w	print_driver_text
 
-	move.w	#$8174,vdp_control	; main screen turn on
+	move.w	#$8154,vdp_control	; main screen turn on
+
+	lea		r_driver,a0
+	lea		MDSSEQ(pc),a1
+	lea 	MDSPCM(pc),a2
+	bsr.w	mds_init
+
+	move.w	#$8174,vdp_control	; enable interrupt
+
 	move.w	#$2300,sr			; interrupt enable
 
 ;====================================================================
