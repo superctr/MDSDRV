@@ -53,9 +53,9 @@ mds_init
 	move.l	@zero,2+w_tmask(a0)
 	move.l	@zero,w_chmask(a0)				;clear chmask
 	move.l	@zero,2+w_chmask(a0)
-	move.w	@zero,w_pcm_enable				;clear pcm
-	move.w	@zero,w_fm3_mask				;clear fm3mask
-	move.l	@zero,w_fm3_tl
+	move.w	@zero,w_pcm_enable(a0)			;clear pcm
+	move.w	@zero,w_fm3_mask(a0)			;clear fm3mask
+	move.l	@zero,w_fm3_tl(a0)
 
 	move.w	#128,d1							; NTSC tempo
 	btst	#6,io_version
