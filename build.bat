@@ -7,6 +7,7 @@ tools\mdslink.exe -o mdsseq.bin mdspcm.bin^
   "sample/sand_light.mds"^
   "sample/junkers_high.mds"^
   "sample/astronomia.mds"^
+  "sample/passport.mds"^
   > error.txt
 if %ERRORLEVEL% neq 0 goto error
 echo Make mdssub.bin ...
