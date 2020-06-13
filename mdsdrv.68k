@@ -5,6 +5,8 @@
 
 ASM68K = 1
 ASMZ80 = 0
+PACK_Z80 = 1
+
 	include		"mdssub.inc"
 
 ;======================================================================
@@ -20,7 +22,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.1 200413"
+	dc.b	"MDSDRV0.1 200613"
 version_str_end
 
 ;======================================================================
@@ -1221,19 +1223,19 @@ mds_fm_update_ins
 	rts
 
 ;----------------------------------------------------------------------
-; burn cycles while FM chip is busy
-;----------------------------------------------------------------------
-@burn56											; bsr=18 : 18
-	cmp.b	*(pc,d0),d0							;10+4=14 : 32
-	nop											;      4 : 36
-	nop											;      4 : 40
-	rts											;     16 : 56
-
-;----------------------------------------------------------------------
 ; operator register table
 ;----------------------------------------------------------------------
 @op_reg_table
 	dc.b	$30,$50,$60,$70,$80,$90
+
+;----------------------------------------------------------------------
+; burn cycles while FM chip is busy
+;----------------------------------------------------------------------
+@burn56											; bsr=18 : 18
+	ror.w	#1,d0								;  6+4=8 : 26
+	rol.w	#1,d0                               ;  6+4=8 : 34
+	cmp.l	d0,d0								;      6 : 40
+	rts											;     16 : 56
 
 ;======================================================================
 ; FM volume update
@@ -1293,6 +1295,37 @@ mds_fm_vol_table
 	dc.b	42,40,37,34,32,29,26,24,21,18,16,13,10,8,5,2
 
 ;======================================================================
+; FM cutoff
+;----------------------------------------------------------------------
+; Assumes z80 is stopped and reg $28 is latched
+mds_fm_cutoff
+	move.b	chnid,$4001(zram)					;12 cycles + 2 nop
+
+	move.w	chnid,d1
+	andi.b	#$03,d1
+	swap	chnid
+
+	move.b	#$80,d0								;rr=max
+	add.b	d1,d0
+	moveq	#3,d2								;op count
+	bra.s	@notbusy
+
+@nextop											; burn 83-14 = 69
+	ror.l	#8,d0								; 16+8=24 : 24
+	rol.l	#6,d0                               ; 12+8=20 : 44
+	rol.l	#2,d0								;  4+8=12 : 56
+
+@notbusy:
+	move.b	d0,0(zram,chnid)					;     14 : 70
+	move.b	#$ff,1(zram,chnid)					;        : 18
+	addq.b	#4,d0								;  10/14 : 18 (14)
+	dbra	d2,@nextop							;  10/14 : 32
+	swap	chnid
+
+	mds_z80_start
+	bra.w	mds_update_return
+
+;======================================================================
 ; FM update
 ;----------------------------------------------------------------------
 ; INPUT:
@@ -1321,8 +1354,10 @@ mds_fm0_update
 
 	mds_z80_wait_fm
 	move.b	#$28,$4000(zram)
-	nop
-	nop
+
+	tst.l	flag								; enable flag cleared?
+	bpl.s	mds_fm_cutoff
+
 	move.b	chnid,$4001(zram)						;12 cycles + 2 nop
 
 @no_key_off
@@ -1739,11 +1774,15 @@ mds_z80_init
 	move.l	a0,-(sp)					;backup work
 	lea		@z80_driver(pc),a0			;upload Z80 driver
 	lea		z80_ram,a1
-	mds_z80_unpack
-;	move.w	#@volume_table-@z80_driver-1,d0
-;@z80_loop
-;	move.b	(a0)+,(a1)+
-;	dbra	d0,@z80_loop
+
+	if PACK_Z80
+		mds_z80_unpack
+	else
+		move.w	#@volume_table-@z80_driver-1,d0
+@z80_loop
+		move.b	(a0)+,(a1)+
+		dbra	d0,@z80_loop
+	endif
 
 	lea		@volume_table(pc),a0
 	lea		z80_ram+z_vtab,a1			; calculate volume tables
@@ -1782,17 +1821,22 @@ mds_z80_init
 	move.b	d1,(a1)+
 	move.w	(a0)+,d1
 	lsr.w	#5,d1						; div by 32
-	add.w	#$1ff,d1
+	addi.w	#$1ff,d1
 	move.b	d1,(a1)+					; length
 	ror.w	#8,d1
-;	addq.b	#2,d1						; add $200
 	move.b	d1,(a1)+
 	dbra	d0,@next_pcm
 @skip
 	rts
 
 @z80_driver
-	incbin	"mdssub.slz"
+
+	if PACK_Z80
+		incbin	"mdssub.slz"
+	else
+		incbin	"mdssub.bin"
+	endif
+
 	even
 @volume_table
 	dc.w	256,203,161,128,102,81,64,51,40,32,26,20,16,13,10,8
