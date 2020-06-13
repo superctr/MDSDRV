@@ -8,10 +8,15 @@ tools\mdslink.exe -o mdsseq.bin mdspcm.bin^
   "sample/junkers_high.mds"^
   "sample/astronomia.mds"^
   "sample/passport.mds"^
+  "sample/pcmtest2.mds"^
+  "sample/pcmtest.mds"^
   > error.txt
 if %ERRORLEVEL% neq 0 goto error
 echo Make mdssub.bin ...
 tools\sjasmplus.exe mdssub.z80 --raw=mdssub.bin --lst=mdssub.lst >error.txt
+if %ERRORLEVEL% neq 0 goto error
+echo Make mdssub.slz ...
+tools\slz.exe -c mdssub.bin mdssub.slz
 if %ERRORLEVEL% neq 0 goto error
 echo Make main.bin ...
 tools\asm68k.exe /k /p /o ae- main.68k, main.bin >error.txt, , main.lst

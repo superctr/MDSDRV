@@ -63,3 +63,7 @@ operating systems, `wine` is required.
 
 ## Copyright
 &copy; 2020 Ian Karlsson
+
+## Special thanks
+- Sik: for making suggestions and giving inspiration for the Z80 driver.
+	Also for the SLZ algorithm used to compress the Z80 driver.

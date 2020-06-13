@@ -4,6 +4,7 @@
 ;======================================================================
 
 ASM68K = 1
+ASMZ80 = 0
 	include		"mdssub.inc"
 
 ;======================================================================
@@ -1643,8 +1644,8 @@ mds_dummy_update
 	tst.b	1+w_pcm_enable(work)
 	beq.s	@no_pcm
 
-	clr.b	1+w_pcm_enable(work)		; send key off if we just
-	mds_z80_cmd0	#zc_pcm2_stop		; switched from PCM to FM
+	mds_z80_pcm_stop #1
+
 @no_pcm
 	bra.w	mds_update_return
 
@@ -1687,7 +1688,7 @@ mds_pcm1_update
 ; PCM2 update
 ;----------------------------------------------------------------------
 mds_pcm2_update
-	moveq	#3,d0									;pcm2 offset
+	moveq	#1,d0									;pcm2 offset
 	st.b	1+w_pcm_enable(work)
 	tst.l	flag
 	bmi.s	mds_pcm_update
@@ -1707,9 +1708,8 @@ mds_pcm_update
 
 	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
 	sub.b	t_vol(twork),d1
-	lsl.w	#8,d1
-	addi.b	#zc_pcm1_vol,d0
-	mds_z80_cmd2	d0,d1
+	mds_z80_pcm_volume	d0,d1
+
 @no_set_vol
 	bra.w	mds_update_return
 
@@ -1718,16 +1718,13 @@ mds_pcm_key_on
 	bclr	#nf+nf_key_off,flag
 	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
 	sub.b	t_vol(twork),d1
-	lsl.w	#8,d1
-	move.b	t_ins(twork),d1
-	addi.b	#zc_pcm1_start,d0
-	mds_z80_cmd2	d0,d1							; key on pcm
+	move.b	t_ins(twork),d2
+	mds_z80_pcm_start_f	d0,d1,d2
 	bra.w	mds_update_return
 
 mds_pcm_key_off
 	bclr	#nf+nf_vol,flag
-	addi.b	#zc_pcm1_stop,d0
-	mds_z80_cmd0	d0								; key off pcm
+	mds_z80_pcm_stop d0
 	bra.w	mds_update_return
 
 ;======================================================================
@@ -1742,11 +1739,13 @@ mds_z80_init
 	move.l	a0,-(sp)					;backup work
 	lea		@z80_driver(pc),a0			;upload Z80 driver
 	lea		z80_ram,a1
-	move.w	#@volume_table-@z80_driver-1,d0
-@z80_loop
-	move.b	(a0)+,(a1)+
-	dbra	d0,@z80_loop
+	mds_z80_unpack
+;	move.w	#@volume_table-@z80_driver-1,d0
+;@z80_loop
+;	move.b	(a0)+,(a1)+
+;	dbra	d0,@z80_loop
 
+	lea		@volume_table(pc),a0
 	lea		z80_ram+z_vtab,a1			; calculate volume tables
 	moveq	#0,d0
 @next_byte
@@ -1782,17 +1781,18 @@ mds_z80_init
 	ror.w	#8,d1
 	move.b	d1,(a1)+
 	move.w	(a0)+,d1
-	andi.w	#$fff0,d1					; div by 16
+	lsr.w	#5,d1						; div by 32
+	add.w	#$1ff,d1
 	move.b	d1,(a1)+					; length
 	ror.w	#8,d1
-	addq.b	#1,d1						; add $100
+;	addq.b	#2,d1						; add $200
 	move.b	d1,(a1)+
 	dbra	d0,@next_pcm
 @skip
 	rts
 
 @z80_driver
-	incbin	"mdssub.bin"
+	incbin	"mdssub.slz"
 	even
 @volume_table
 	dc.w	256,203,161,128,102,81,64,51,40,32,26,20,16,13,10,8
