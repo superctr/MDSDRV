@@ -89,3 +89,15 @@ These are currently all the possible command numbers for `mds_command`.
 - **Command** `0x05`
 - **Description**: Sets the global tempo to the value in `d1`. Automatic
 	PAL/NTSC adjustment will not be done.
+
+##### `write_fm_port0`
+- **Command** `0x06`
+- **Description**: Writes the data defined in the lower 8 bits of `d1`
+	to the FM port 0 register defined in the upper 8 bits of `d1`.
+	Port 0 contains timer, DAC, key-on and FM1-FM3 operator registers.
+
+##### `write_fm_port1`
+- **Command** `0x07`
+- **Description**: Writes the data defined in the lower 8 bits of `d1`
+	to the FM port 1 register defined in the upper 8 bits of `d1`.
+	Port 1 contains FM4-FM6 operator registers.
