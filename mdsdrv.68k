@@ -1718,7 +1718,7 @@ mds_dummy_update
 	tst.b	1+w_pcm_enable(work)
 	beq.s	@no_pcm
 
-	mds_z80_pcm_stop #1
+	mds_z80_pcm_stop_i	1
 
 @no_pcm
 	bra.w	mds_update_return

@@ -4,24 +4,34 @@
 
 z_busy			equ		$0980
 
-z_pcm_flag		equ		$0981			;pcm status flags
+z_fm_reg27		equ		$0981		;fm timer reset command
 
-z_pcm_key_on	equ		$0982			;pcm key on flags
-z_pcm_key_off	equ		$0983			;pcm key off flags
-z_pcm_source	equ		$0984			;pcm source select flag
-z_fm_reg27		equ		$0985		;fm timer reset command
+z_pcm_flag		equ		$0982		;pcm status flags
+z_pcm_key_on	equ		$0983		;pcm keyon trigger
 
-z_flag_pcm1		equ		0				;pcm1 flag
-z_flag_pcm2		equ		1				;pcm2 flag
+z_pcm1_key_on	equ		$0984		;pcm key on flags
+z_pcm2_key_on	equ		$0985		;pcm key on flags
 
-z_pcm1_vol		equ		$0988		;volume table hi (0=key off)
-z_pcm2_vol		equ		$0989		;volume table hi (0=key off)
+z_pcm1_key_off	equ		$0986		;pcm key off flags
+z_pcm2_key_off	equ		$0987		;pcm key off flags
+
+z_pcm1_source	equ		$0988		;pcm source select flag
+z_pcm2_source	equ		$0989		;pcm source select flag
+
+z_pcm1_vol		equ		$098a		;volume table hi (0=key off)
+z_pcm2_vol		equ		$098b		;volume table hi (0=key off)
 
 z_pcm1_src		equ		$098c		;sample number
 z_pcm2_src		equ		$098d		;sample number
 
 z_stab			equ		$0a00
 z_vtab			equ		$1000
+
+z_flag_pcm1		equ		0
+z_flag_pcm2		equ		1
+
+z_flag_key_on	equ		7
+
 
 ;======================================================================
 ; Z80/68K communication macros
@@ -75,12 +85,13 @@ mds_z80_pcm_start_f	macro ch,vol,src
 	bne.s	@wait_z80\@
 ; TODO: Maybe the variables should be rearranged to avoid having to
 ; do this.
-	lea		z_pcm1_vol(zram),zram
-	move.b	\vol,0(zram,\ch)
-	move.b	\src,z_pcm1_src-z_pcm1_vol(zram,\ch)
-	lea		-z_pcm1_vol(zram),zram
-	bset.b	\ch,z_pcm_key_on(zram)
-	bset.b	\ch,z_pcm_source(zram)
+	lea		z_pcm1_key_on(zram),zram
+	st.b	0(zram,\ch)
+	st.b	z_pcm1_source-z_pcm1_key_on(zram,\ch)
+	move.b	\vol,z_pcm1_vol-z_pcm1_key_on(zram,\ch)
+	move.b	\src,z_pcm1_src-z_pcm1_key_on(zram,\ch)
+	lea		-z_pcm1_key_on(zram),zram
+	st.b	z_pcm_key_on(zram)
 	move.w	#$0000,(zreq)
 	endm
 
@@ -90,7 +101,10 @@ mds_z80_pcm_start	macro ch
 @wait_z80\@
 	btst.b	#0,(zreq)
 	bne.s	@wait_z80\@
-	bset.b	\ch,z_pcm_key_on(zram)
+	lea		z_pcm1_key_on(zram),zram
+	st.b	0(zram,\ch)
+	lea		-z_pcm1_key_on(zram),zram
+	st.b	z_pcm_key_on(zram)
 	move.w	#$0000,(zreq)
 	endm
 
@@ -100,7 +114,19 @@ mds_z80_pcm_stop	macro ch
 @wait_z80\@
 	btst.b	#0,(zreq)
 	bne.s	@wait_z80\@
-	bset.b	\ch,z_pcm_key_off(zram)
+	lea		z_pcm1_key_off(zram),zram
+	st.b	0(zram,\ch)
+	lea		-z_pcm1_key_off(zram),zram
+	move.w	#$0000,(zreq)
+	endm
+
+mds_z80_pcm_stop_i	macro ch
+@stop_z80\@
+	move.w	#$0100,(zreq)
+@wait_z80\@
+	btst.b	#0,(zreq)
+	bne.s	@wait_z80\@
+	st.b	\ch+z_pcm1_key_off(zram)
 	move.w	#$0000,(zreq)
 	endm
 

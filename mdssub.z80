@@ -162,11 +162,14 @@ pcm_loop
 	fast_poll											;POLL 1
 
 	; handle flags here
-	ld		a,(hl)
-	rrca
-	call	c, pcm1_key_on							;bit 0
-	rrca
-	call	c, pcm2_key_on							;bit 1
+	xor		a
+	ld		(hl),a								;reset keyon trigger
+	inc		hl
+	cp		(hl)
+	call	nz, pcm1_key_on
+	inc		hl
+	cp		(hl)
+	call	nz, pcm2_key_on
 
 	fast_poll											;POLL 2
 
@@ -212,8 +215,8 @@ pcm1_addr		equ		$+1
 
 .same_bank
 	ld		(pcm1_addr),hl
-	ld		a,(z_pcm_key_off)
-	bit		z_flag_pcm1,a
+	ld		a,(z_pcm1_key_off)
+	or		a
 	jp		nz,pcm1_key_off
 
 pcm1_left		equ 	$+1
@@ -222,8 +225,8 @@ pcm1_left		equ 	$+1
 	ld		(pcm1_left),bc
 	djnz	pcm2_main
 pcm1_key_off
-	and		~(1<<z_flag_pcm1)
-	ld		(z_pcm_key_off),a
+	xor		a
+	ld		(z_pcm1_key_off),a
 
 	ld		a,$c3							; change "jp z" to "jp"
 	ld		(pcm1_enable),a
@@ -269,8 +272,8 @@ pcm2_addr		equ		$+1
 
 .same_bank
 	ld		(pcm2_addr),de
-	ld		a,(z_pcm_key_off)
-	bit		z_flag_pcm2,a
+	ld		a,(z_pcm2_key_off)
+	or		a
 	jp		nz,pcm2_key_off
 
 pcm2_left		equ 	$+1
@@ -279,8 +282,8 @@ pcm2_left		equ 	$+1
 	ld		(pcm2_left),bc
 	djnz	swap_buffers
 pcm2_key_off
-	and		~(1<<z_flag_pcm2)
-	ld		(z_pcm_key_off),a
+	xor		a
+	ld		(z_pcm2_key_off),a
 
 	ld		a,$c3							; change "jp z" to "jp"
 	ld		(pcm2_enable),a
@@ -344,39 +347,40 @@ sync_done
 		ld		bc,$0006
 		ld		de,var
 		ldir
-		ld		hl,z_pcm_source
-		res		flag,(hl)
 	endm
 
 ;======================================================================
 ; PCM1 key on
 ;----------------------------------------------------------------------
 pcm1_key_on
-	ex		af,af'
-	res		z_flag_pcm1,(hl)
+	ld		(hl),a
 	push	hl
-	ld		a,(z_pcm_source)
-	and		(1<<z_flag_pcm1)
+	ld		hl,z_pcm1_source
+	cp		(hl)
 	jr		z,.no_src
+	ex		af,af'
 	ld		a,(z_pcm1_src)
 	ld		d,0
 	ld		e,a
-	set_src	pcm1_regs,z_flag_pcm1
+	ex		af,af'
+	ld		(hl),d
+	set_src	pcm1_regs,z_pcm1_source
 .no_src
-	ld		a,(pcm1_bank)
-	ld		(pcm1_abank),a
-	ld		hl,(pcm1_start)
-	ld		(pcm1_addr),hl
-	ld		hl,(pcm1_length)
-	ld		(pcm1_left),hl
+	ld		hl,pcm1_bank
+	ld		de,pcm1_abank
+	ldi
+	ld		de,pcm1_addr
+	ldi
+	ldi
+	ld		de,pcm1_left
+	ldi
+	ldi
 	ld		hl,z_pcm_flag
 	set		z_flag_pcm1,(hl)
-	ld		hl,z_pcm_key_off
-	res		z_flag_pcm1,(hl)
+	ld		(z_pcm1_key_off),a
+	ld		hl,pcm1_enable
+	ld		(hl),$ca							; change "jp" to "jp z"
 	pop		hl
-	ld		a,$ca							; change "jp" to "jp z"
-	ld		(pcm1_enable),a
-	ex		af,af'
 	ret
 
 ;======================================================================
@@ -402,31 +406,34 @@ pcm1_disabled
 ; PCM2 key on
 ;----------------------------------------------------------------------
 pcm2_key_on
-	ex		af,af'
-	res		z_flag_pcm2,(hl)
+	ld		(hl),a
 	push	hl
-	ld		a,(z_pcm_source)
-	and		(1<<z_flag_pcm2)
+	ld		hl,z_pcm2_source
+	cp		(hl)
 	jr		z,.no_src
+	ex		af,af'
 	ld		a,(z_pcm2_src)
 	ld		d,0
 	ld		e,a
-	set_src	pcm2_regs,z_flag_pcm2
+	ex		af,af'
+	ld		(hl),d
+	set_src	pcm2_regs,z_pcm2_source
 .no_src
-	ld		a,(pcm2_bank)
-	ld		(pcm2_abank),a
-	ld		hl,(pcm2_start)
-	ld		(pcm2_addr),hl
-	ld		hl,(pcm2_length)
-	ld		(pcm2_left),hl
+	ld		hl,pcm2_bank
+	ld		de,pcm2_abank
+	ldi
+	ld		de,pcm2_addr
+	ldi
+	ldi
+	ld		de,pcm2_left
+	ldi
+	ldi
 	ld		hl,z_pcm_flag
 	set		z_flag_pcm2,(hl)
-	ld		hl,z_pcm_key_off
-	res		z_flag_pcm2,(hl)
+	ld		(z_pcm2_key_off),a
+	ld		hl,pcm2_enable
+	ld		(hl),$ca							; change "jp" to "jp z"
 	pop		hl
-	ld		a,$ca							; change "jp" to "jp z"
-	ld		(pcm2_enable),a
-	ex		af,af'
 	ret
 
 	assert		$ <= out_buf1				; Maximum program size
