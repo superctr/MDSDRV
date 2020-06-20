@@ -1545,16 +1545,15 @@ mds_psg_update_env
 ;----------------------------------------------------------------------
 ; key on
 ;----------------------------------------------------------------------
-	btst	#nf+nf_key_on,flag
+	bclr	#nf+nf_key_on,flag
 	beq.s	@no_keyon
 	bclr	#nf+nf_slur,flag
 	bne.s	@no_keyon
-	btst	#cf+cf_fm3_enable,flag
-	bne.s	@no_keyon
+	bclr	#nf+nf_key_off,flag
+	beq.s	@tie
 
 	moveq	#$1f,@cmd								;silence
 	move.w	@cmd,t_psg_eg_pos(twork)
-	andi.l	#~((1<<(nf+nf_key_on))+(1<<(nf+nf_key_off))),flag
 	bset	#nf+nf_sustain,flag
 
 	st		t_last_pitch(twork)	; Always rewrite pitch after PSG keyon
@@ -1567,6 +1566,7 @@ mds_psg_update_env
 ;----------------------------------------------------------------------
 	btst	#nf+nf_key_off,flag					;skip delays for keyoff
 	bne.s	@key_off
+@tie
 	btst	#nf+nf_sustain,flag
 	beq.s	@command
 	move.b	t_psg_eg_delay(twork),@cmd
