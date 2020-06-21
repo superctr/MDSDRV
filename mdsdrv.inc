@@ -42,14 +42,14 @@ cf				equ		0+16
 ; note flags
 ;======================================================================
 	rsreset
-nf_silence		rs.b	1			; trigger silence
-nf_key_on		rs.b	1			; keyon trigger
-nf_key_off		rs.b	1			; keyoff trigger
-nf_slur			rs.b	1			; slur next note
 nf_ins			rs.b	1			; load new instrument
 nf_vol			rs.b	1			; load new volume
+nf_fm3			rs.b	1			; check fm3 flags
 nf_pan_lfo		rs.b	1			; load new pan/lfo
 nf_sustain		equ		nf_pan_lfo	; PSG envelope sustain
+nf_slur			rs.b	1			; slur next note
+nf_key_off		rs.b	1			; keyoff trigger
+nf_key_on		rs.b	1			; keyon trigger
 nf_enabled		rs.b	1			; envelopes enabled(must be bit7!)
 
 ;======================================================================
@@ -57,16 +57,16 @@ nf_enabled		rs.b	1			; envelopes enabled(must be bit7!)
 ;======================================================================
 	rsreset
 cf_drum_mode	rs.b	1			; drum mode enabled
-cf_fm3_enable	rs.b	1			; fm3 mode enabled
 cf_psg3_control	rs.b	1			; write fnum to psg3
 cf_pcm_control	rs.b	1			; pcm instrument loaded
+cf_stop			rs.b	1			; stop channel
+cf_paused		rs.b	1			; channel is paused (stop flag)
 
 ;======================================================================
 ; flag bitmasks
 ;======================================================================
 nm_init			equ		((1<<nf_ins)|(1<<nf_pan_lfo)|(1<<nf_enabled))
-nm_restore		equ		((1<<nf_key_off)|(1<<nf_ins)|(1<<nf_vol)|(1<<nf_pan_lfo))
-nm_stop			equ		((1<<nf_silence)|(1<<nf_key_off))
+nm_restore		equ		((1<<nf_key_off)|(1<<nf_ins)|(1<<nf_vol)|(1<<nf_pan_lfo)|(1<<nf_fm3))
 
 ;======================================================================
 ; channel type
@@ -86,7 +86,9 @@ ct_psgn			rs.b	1			; psg noise
 t_note_flag		rs.b	1			; nf_*
 t_channel_flag	rs.b	1			; cf_*
 t_base_addr		rs.l	1			; sequence base addr
-t_fm3_mask		equ	t_base_addr		; ch3 op mask (using top 8 bits)
+t_op_mask		equ	t_base_addr		; operator mask (using top 8 bits)
+									;     bit 7   : ch3 enable
+									;     bit 6-3 : keyon/off op mask
 t_position		rs.w	1			; sequence position
 t_stack_pos		rs.b	1
 t_counter		rs.b	1			; ticks until next update

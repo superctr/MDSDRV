@@ -85,7 +85,7 @@ user_cmd
 	ld		(ix+1),a
 	ld		iyl,a
 	xor		a
-	ld		a,(de)
+	ld		(de),a
 	exx
 	ret
 

@@ -22,7 +22,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.1 200613"
+	dc.b	"MDSDRV0.1 200621"
 version_str_end
 
 ;======================================================================
@@ -191,6 +191,8 @@ mds_command
 	movem.l	zram/zreq,-(sp)
 	bsr.s	@fm_prepare
 	move.b	d0,$4000(zram)
+	nop
+	nop
 	move.b	d1,$4001(zram)
 	mds_z80_start
 	movem.l	(sp)+,zram/zreq
@@ -211,6 +213,8 @@ mds_command
 	movem.l	zram/zreq,-(sp)
 	bsr.s	@fm_prepare
 	move.b	d0,$4002(zram)
+	nop
+	nop
 	move.b	d1,$4003(zram)
 	mds_z80_start
 	movem.l	(sp)+,zram/zreq
@@ -299,10 +303,12 @@ mds_update_seq_return			equ	*
 		subq.b	#2,d0						;next request
 	endr
 @has_priority
-	bclr	#nf+nf_silence,flag
-	beq.s	@no_silence
+	bclr	#cf+cf_stop,flag
+	beq.s	@no_stop
+	bset	#nf+nf_fm3,flag
+	bset	#nf+nf_key_off,flag
 	bclr	#nf+nf_enabled,flag
-@no_silence
+@no_stop
 	clr.w	d0
 	add.b	chnid,chnid
 	move.b	chnid,d0
@@ -311,7 +317,7 @@ mds_update_seq_return			equ	*
 	jmp		@ch_update_table(pc,d0)
 @no_priority
 	st		t_last_pitch(twork)
-	ori.l	#nm_restore<<nf,flag
+	ori.l	#(nm_restore<<nf),flag
 
 ;----------------------------------------------------------------------
 mds_update_return				equ *
@@ -344,7 +350,7 @@ mds_update_return				equ *
 	@ch_mapping		#6,mds_fm6_update		;5
 	@ch_mapping		#-128,mds_psg_update	;6
 	@ch_mapping		#-96,mds_psg_update		;7
-	@ch_mapping		#-64,mds_psg_update		;8
+	@ch_mapping		#-64,mds_psg3_update	;8
 	@ch_mapping		#-32,mds_psgn_update	;9
 	@ch_mapping		#10,mds_dummy_update	;a
 	@ch_mapping		#11,mds_dummy_update	;b
@@ -406,6 +412,7 @@ mds_handle_request
 	beq.w	@skip_track
 
 	move.l	tbase,t_base_addr(twork)
+
 	move.b	(tmpa0)+,@reqdata				;channel id
 	move.b	#nm_init,t_note_flag(twork)
 	move.b	(tmpa0)+,t_channel_flag(twork)
@@ -429,6 +436,7 @@ mds_handle_request
 
 @not_fm
 	st		t_last_pitch(twork)				;previous pitch
+	move.w	#$0030,t_ins(twork)				;ins/ins transpose
 	move.w	@zero,t_note(twork)				;note/transpose
 	move.w	@zero,t_trs(twork)				;transpose/portamento
 	move.w	#$8f00,t_vol(twork)				;vol/lfo_delay
@@ -463,7 +471,7 @@ mds_handle_request
 @stop_next_track
 	btst	tnum,tmask						;track id
 	beq.w	@stop_skip_track
-	ori.b	#nm_stop,t_note_flag(twork)
+	bset.b	#cf_stop,t_channel_flag(twork)
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
 
 @stop_skip_track
@@ -616,7 +624,8 @@ mds_update_seq
 	move.b	t_stack_pos(twork),@cmd
 	bne		@cmd_return
 
-	ori.l	#(nm_stop<<nf),flag
+	;ori.l	#(nm_stop<<nf),flag
+	bset	#cf+cf_stop,flag
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
 
 	moveq	#-1,@tempreg					;clear channel mask
@@ -662,14 +671,28 @@ mds_update_seq
 	move.b	t_channel_id(twork),@cmd
 	cmpi.b	#6,@cmd							; fm or psg
 	bcc.s	@cmd_ins_psg
+
+;--------------------------------------
+; fm
+;--------------------------------------
 	adda.l	w_sdtop(work),tmpa0				; ptr. to ins data
+	adda.w	#24,tmpa0
+	cmpi.b	#2,@cmd
+	bne.s	@cmd_ins_not_fm3
+	move.l	(tmpa0)+,w_fm3_tl(work)			; fm3 stuff
+	move.b	(tmpa0)+,w_fm3_alg(work)
+	subq.l	#5,tmpa0
+@cmd_ins_not_fm3
+	move.l	(tmpa0)+,t_fm_tl(twork)
+	move.b	(tmpa0)+,t_fm_alg(twork)
+	move.b	(tmpa0)+,t_ins_trs(twork)
 	bset	#nf+nf_key_off,flag
-	move.l	24(tmpa0),t_fm_tl(twork)
-	move.b	28(tmpa0),t_fm_alg(twork)
-	move.b	29(tmpa0),t_ins_trs(twork)
 	st		t_last_pitch(twork)				; may reset pitch
 	rts
 
+;--------------------------------------
+; psg
+;--------------------------------------
 @cmd_ins_psg
 	move.w	tmpa0,t_psg_eg_addr(twork)
 	cmpi.w	#$ff00,t_psg_eg_pos(twork)		; don't reset stopped env
@@ -816,21 +839,19 @@ mds_update_seq
 	bclr	@cmd,flag
 	rts
 @cmd_flg_fm3
-	beq.s	@cmd_flg_fm3_off
-	bset	#cf+cf_fm3_enable,flag
-	move.b	@cmd,t_fm3_mask(twork)	; we're reusing MSB of t_base_addr
-	rts
-@cmd_flg_fm3_off
-	bclr	#cf+cf_fm3_enable,flag
+	ori.l	#(1<<(nf+nf_fm3))|(1<<(nf+nf_vol)),flag
+	lsl.b	#3,@cmd					;TODO: could optimize by shifting
+	ori.b	#$80,@cmd				; set bit 7
+	move.b	@cmd,t_op_mask(twork)	; we're reusing MSB of t_base_addr
 	rts
 
 ;----------------------------------------------------------------------
 ; fmreg - write to FM chip
 ;----------------------------------------------------------------------
 @cmd_fmreg
-	mds_z80_wait_fm							; the panning
+	mds_z80_wait_fm
 	move.b	0(tbase,@trackpos),$4000(zram)
-	move.b	1(tbase,@trackpos),$4001(zram)
+	move.b	1(tbase,@trackpos),$4001(zram)				;24
 	mds_z80_start
 	rts
 
@@ -842,6 +863,7 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_fmtl
 	rts
+
 @cmd_fmtlm
 	rts
 
@@ -1197,6 +1219,57 @@ mds_pitch_update
 	rts
 
 ;======================================================================
+; Write pitch for FM3 special mode
+;----------------------------------------------------------------------
+; INPUT:
+;  d0 - calculated pitch
+;  d4 - operator mask (bit 6-3 = operators)
+; TRASHES:
+;  tmpa1,d0,d1,d2
+mds_fm3_update_pitch
+	bsr.w	mds_get_fm_pitch
+	mds_z80_wait_fm
+	btst	#3,d4
+	bne.s	@skip_op1
+	move.b	#$ad,d1								;op1 = a9/ad
+	bsr.s	@write_one
+@skip_op1
+	btst	#3+1,d4
+	bne.s	@skip_op2
+	move.b	#$ae,d1								;op2 = aa/ae
+	bsr.s	@write_one
+@skip_op2
+	btst	#3+2,d4
+	bne.s	@skip_op3
+	move.b	#$ac,d1								;op3 = a8/ac
+	bsr.s	@write_one
+@skip_op3
+	btst	#3+3,d4
+	bne.s	@skip_op4
+	move.b	#$a6,d1								;op4 = a2/a6
+	bsr.s	@write_one
+@skip_op4
+	mds_z80_start
+	rts
+
+@write_one
+	move.b	d1,$4000(zram)
+	nop
+	nop
+	move.b	d0,$4001(zram)						; 8+12 : 20
+	ror.w	#8,d0								; 22  :  22
+	subq.b	#4,d1								;  4  :  28
+	nop
+	nop
+	nop											; 4+4+4: 40
+	move.b	d1,$4000(zram)						; 14  :  54
+	nop
+	nop
+	move.b	d0,$4001(zram)						; 8+12 : 20
+	ror.w	#8,d0								; 22  :  22
+	rts
+
+;======================================================================
 ; FM patch upload
 ;----------------------------------------------------------------------
 ; NOTE: does not wait for the FM busy flag to clear at the beginning
@@ -1287,6 +1360,9 @@ mds_fm_update_ins
 ; TRASHES
 ;  tmpa1,tmpa2,d0,d1,d2,d3,d4
 mds_fm_update_vol
+	move.b	t_op_mask(twork),d4
+	bmi.s	mds_fm3_update_vol
+
 	lea		4+t_fm_tl(twork),tmpa1
 	move.b	t_vol(twork),d3
 	bpl.s	@no_vol_table
@@ -1334,12 +1410,76 @@ mds_fm_vol_table
 	dc.b	42,40,37,34,32,29,26,24,21,18,16,13,10,8,5,2
 
 ;======================================================================
+; FM3 volume update
+;----------------------------------------------------------------------
+; NOTE: does not wait for the FM busy flag to clear at the beginning
+;       of this routine
+; INPUT:
+;  d4 - operator mask (bit 6-3 = operators)
+; TRASHES
+;  tmpa1,tmpa2,d0,d1,d2,d3
+mds_fm3_update_vol
+	lea		4+w_fm3_tl(work),tmpa1
+	move.b	t_vol(twork),d3
+	bpl.s	@no_vol_table
+	cmpi.b	#$90,d3
+	bcc.s	@no_vol_table
+	andi.w	#$000f,d3
+	move.b	mds_fm_vol_table(pc,d3),d3
+
+@no_vol_table
+;	move.b	t_op_mask(twork),d4
+	moveq	#3,d2
+
+	move.b	-(tmpa1),d0							; op4
+	btst	#3+3,d4
+	bne.s	@skip_op4
+	bsr.s	@write_op
+@skip_op4
+	subq.b	#1,d2
+	move.b	-(tmpa1),d0							; op2
+	btst	#3+1,d4
+	bne.s	@skip_op2
+	bsr.s	@write_op
+@skip_op2
+	subq.b	#1,d2
+	move.b	-(tmpa1),d0							; op3
+	btst	#3+2,d4
+	bne.s	@skip_op3
+	bsr.s	@write_op
+@skip_op3
+	subq.b	#1,d2
+	move.b	-(tmpa1),d0							; op1
+	btst	#3+0,d4
+	bne.s	@skip_op1
+@write_op
+	move.b	w_fm3_alg(work),d1
+	andi.w	#$0007,d1
+	cmp.b	mds_fm_op_table(pc,d1),d2
+	bcs.s	@write_vol
+	add.b	d3,d0
+	bpl.b	@write_vol
+	move.b	#$7f,d0
+@write_vol
+	move.b	d2,d1
+	add.b	d1,d1
+	add.b	d1,d1
+	add.b	#$42,d1
+	move.b	d1,$4000(zram)
+	nop
+	nop
+	move.b	d0,$4001(zram)
+@skip_op1
+	rts
+
+;======================================================================
 ; FM cutoff
 ;----------------------------------------------------------------------
 ; Assumes z80 is stopped and reg $28 is latched
 mds_fm_cutoff
 	move.b	chnid,$4001(zram)					;12 cycles + 2 nop
 
+mds_fm3_cutoff
 	move.w	chnid,d1
 	andi.b	#$03,d1
 	swap	chnid
@@ -1394,9 +1534,46 @@ mds_fm0_update
 	mds_z80_wait_fm
 	move.b	#$28,$4000(zram)
 
-	tst.l	flag								; enable flag cleared?
-	bpl.s	mds_fm_cutoff
+	move.b	t_op_mask(twork),d0
+	bpl.s	@normal_key_off
 
+;----------------------------------------------------------------------
+; key_off (fm3 special mode)
+;----------------------------------------------------------------------
+	smi		d1								; d1=ff if fm3 is enabled
+	and.b	w_fm3_mask(work),d0
+	move.b	d0,w_fm3_mask(work)
+	add.b	d0,d0
+	addq.b	#2,d0
+	move.b	d0,$4001(zram)
+
+	bclr	#nf+nf_fm3,flag
+	beq.s	@no_key_off
+
+	tst.l	flag
+	bpl.s	@fm3_cut_off
+	pea		@no_key_off(pc)
+
+@set_fm3_flag
+	and.b	d1,t_op_mask(twork)
+	and.b	d1,w_fm3_mask(work)
+	andi.b	#$40,d1
+	ori.b	#$15,d1
+	move.b	d1,z_fm_reg27(zram)
+	move.b	#0,z_fm_reg_update(zram)
+	rts
+
+@fm3_cut_off
+	clr.b	d1
+	bsr.s	@set_fm3_flag
+	bra.w	mds_fm3_cutoff
+
+;----------------------------------------------------------------------
+; key_off (normal mode)
+;----------------------------------------------------------------------
+@normal_key_off
+	tst.l	flag								; enable flag cleared?
+	bpl.w	mds_fm_cutoff
 	move.b	chnid,$4001(zram)						;12 cycles + 2 nop
 
 @no_key_off
@@ -1456,6 +1633,13 @@ mds_fm0_update
 ;	add.b	d1,chnid
 ;	mds_z80_cmd2	d1,d0						; pitch update
 
+	move.b	t_op_mask(twork),d4
+	bpl.s	@no_fm3_pitch
+	move.w	d0,t_last_pitch(twork)
+	pea		@no_write_pitch(pc)
+	bra.w	mds_fm3_update_pitch
+
+@no_fm3_pitch
 	move.w	d0,d3
 	bsr.w	mds_get_fm_pitch
 	move.b	chnid,d1
@@ -1499,28 +1683,83 @@ mds_fm0_update
 ;----------------------------------------------------------------------
 	bclr	#nf+nf_key_on,flag
 	beq.s	@no_key_on
-
-	btst	#cf+cf_fm3_enable,flag
-	beq.s	@no_fm3_key_on						; TODO: fm3_keyon
-
-	bra.w	mds_update_return
-
-@no_fm3_key_on
-;	btst	#cf+cf_pcm_control,flag				; TODO: pcm_keyon
-
 	bclr	#nf+nf_slur,flag
 	bne.s	@no_key_on
+	move.b	t_op_mask(twork),d0
+	not.b	d0
+	bmi.s	@no_fm3_key_on
 
+	or.b	w_fm3_mask(work),d0
+	move.b	d0,w_fm3_mask(work)
+
+@no_fm3_key_on
 	mds_z80_wait_fm
 	move.b	#$28,$4000(zram)
-	move.b	chnid,d0							; 4 :  4
-	ori.b	#$f0,d0								; 8 : 12
-	move.b	d0,$4001(zram)						;12 : 24
+	add.b	d0,d0								; 4 :  4
+	andi.b	#$f0,d0								; 8 : 12
+	or.b	chnid,d0							; 4 : 16
+	move.b	d0,$4001(zram)						;12 : 28
 	mds_z80_start
 
 @no_key_on
 	bra.w	mds_update_return
 
+;======================================================================
+; FM3 special update
+;----------------------------------------------------------------------
+mds_fm3_update
+	bclr	#nf+nf_key_off,flag
+	beq.s	@no_key_off
+	mds_z80_wait_fm
+	move.b	#$28,$4000(zram)
+	move.b	d4,d0
+	and.b	w_fm3_mask(work),d0
+	move.b	d0,w_fm3_mask(work)
+	add.b	d0,d0
+	addq.b	#2,d0
+	move.b	d0,$4001(zram)
+	bclr	#nf+nf_vol,flag
+	bne.s	@set_vol
+	bra.s	@no_vol_stopped_z80
+
+@no_key_off
+	bclr	#nf+nf_vol,flag
+	beq.s	@no_vol
+	mds_z80_wait_fm
+
+@set_vol
+	bsr.w	mds_fm3_update_vol
+
+@no_vol_stopped_z80
+	mds_z80_start
+
+@no_vol
+	swap	d4
+	bsr.w	mds_pitch_update
+	swap	d4
+	cmp.w	t_last_pitch(twork),d0
+	beq.s	@no_write_pitch
+
+	move.w	d0,t_last_pitch(twork)
+	bsr.w	mds_fm3_update_pitch
+
+@no_write_pitch
+	bclr	#nf+nf_key_on,flag
+	beq.s	@no_key_on
+	bclr	#nf+nf_slur,flag
+	bne.s	@no_key_on
+	not.b	d4
+	or.b	w_fm3_mask(work),d4
+	move.b	d4,w_fm3_mask(work)
+	mds_z80_wait_fm
+	move.b	#$28,$4000(zram)
+	add.b	d4,d4
+	andi.b	#$f2,d4			;assumes that bit1 of the op_mask is unused
+	move.b	d4,$4001(zram)
+	mds_z80_start
+
+@no_key_on
+	bra.w	mds_update_return
 
 ;======================================================================
 ; PSG envelope update
@@ -1679,6 +1918,15 @@ mds_psg_update_env
 ;======================================================================
 ; PSG update
 ;----------------------------------------------------------------------
+mds_psg3_update
+	move.b	t_op_mask(twork),d4
+	bpl.s	mds_psg_update
+	move.b	#$df,sound_psg						; mute psg ch 3
+	andi.b	#$7f,d4
+	bne.w	mds_fm3_update
+@disable_fm3
+	move.b	d4,t_op_mask(twork)
+
 mds_psg_update
 	bsr.w	mds_psg_update_env
 	bsr.w	mds_pitch_update
@@ -1720,9 +1968,17 @@ mds_psgn_update
 	bra.w	mds_update_return
 
 ;======================================================================
-; Dummy channel update (only check for FM3)
+; Dummy channel update (only check for FM3 and PCM2)
 ;----------------------------------------------------------------------
 mds_dummy_update
+	move.b	t_op_mask(twork),d4
+	bpl.s	@no_fm3
+	andi.b	#$7f,d4
+	bne.w	mds_fm3_update
+@disable_fm3
+	move.b	d4,t_op_mask(twork)
+
+@no_fm3
 	btst	#cf+cf_pcm_control,flag
 	bne.w	mds_pcm2_update
 	tst.b	1+w_pcm_enable(work)
@@ -1798,8 +2054,10 @@ mds_pcm_update
 	bra.w	mds_update_return
 
 mds_pcm_key_on
-	bclr	#nf+nf_vol,flag
 	bclr	#nf+nf_key_off,flag
+	beq.w	mds_update_return
+	bclr	#nf+nf_vol,flag
+	bclr	#nf+nf_slur,flag		;slur is cleared but not used
 	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
 	sub.b	t_vol(twork),d1
 	move.b	t_ins(twork),d2

@@ -5,6 +5,7 @@
 z_busy			equ		$0980
 
 z_fm_reg27		equ		$0981		;fm timer reset command
+z_fm_reg_update	equ		$0008		;set to 0 to write reg 27
 
 z_pcm_flag		equ		$0982		;pcm status flags
 z_pcm_key_on	equ		$0983		;pcm keyon trigger
