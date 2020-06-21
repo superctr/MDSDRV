@@ -43,10 +43,11 @@ cf				equ		0+16
 ;======================================================================
 	rsreset
 nf_ins			rs.b	1			; load new instrument
+nf_sustain		equ		nf_ins		; PSG envelope sustain
 nf_vol			rs.b	1			; load new volume
 nf_fm3			rs.b	1			; check fm3 flags
 nf_pan_lfo		rs.b	1			; load new pan/lfo
-nf_sustain		equ		nf_pan_lfo	; PSG envelope sustain
+nf_nmode		equ		nf_pan_lfo	; restore PSG noise mode
 nf_slur			rs.b	1			; slur next note
 nf_key_off		rs.b	1			; keyoff trigger
 nf_key_on		rs.b	1			; keyon trigger
@@ -146,6 +147,7 @@ T_FMSIZE		rs.b	0
 t_psg_eg_addr	rs.w	1			; envelope base address
 t_psg_eg_pos	rs.b	1			; envelope position
 t_psg_eg_delay	rs.b	1			; envelope value & delay
+t_psg_nreset	rs.b	1			; noise reset flag
 t_psg_nmode		rs.b	1			; noise mode
 T_PSGSIZE		rs.b	0
 

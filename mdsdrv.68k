@@ -426,7 +426,7 @@ mds_handle_request
 
 	cmp.w	#ct_psg<<8,@reqdata
 	bcs.s	@not_psg
-	move.b	@zero,t_psg_nmode(twork)		;noise mode initialize
+	move.w	@zero,t_psg_nreset(twork)		;noise mode initialize
 	move.w	tmpa1,t_psg_eg_addr(twork)		;psg eg initialize
 	move.w	#$ff0f,t_psg_eg_pos(twork)
 	bra.s	@not_fm
@@ -664,7 +664,7 @@ mds_update_seq
 @cmd_ins
 	move.b	0(tbase,@trackpos),@cmd
 	move.b	@cmd,t_ins(twork)
-	bset	#nf+nf_ins,flag
+	bset	#nf+nf_key_off,flag
 	bclr	#cf+cf_pcm_control,flag
 	lsl.w	@cmd
 	movea.w	0(tbase,@cmd),tmpa0				; instr address
@@ -686,7 +686,7 @@ mds_update_seq
 	move.l	(tmpa0)+,t_fm_tl(twork)
 	move.b	(tmpa0)+,t_fm_alg(twork)
 	move.b	(tmpa0)+,t_ins_trs(twork)
-	bset	#nf+nf_key_off,flag
+	bset	#nf+nf_ins,flag
 	st		t_last_pitch(twork)				; may reset pitch
 	rts
 
@@ -694,10 +694,10 @@ mds_update_seq
 ; psg
 ;--------------------------------------
 @cmd_ins_psg
+	bset	#nf+nf_key_off,flag				; set key off
+	bclr	#nf+nf_slur,flag
 	move.w	tmpa0,t_psg_eg_addr(twork)
-	cmpi.w	#$ff00,t_psg_eg_pos(twork)		; don't reset stopped env
-	bcc.s	@cmd_dummy
-	move.w	#$000f,t_psg_eg_pos(twork)
+	move.w	#$ff0f,t_psg_eg_pos(twork)
 	rts
 
 ;----------------------------------------------------------------------
@@ -1078,14 +1078,16 @@ mds_get_psg_pitch
 ; entries in the octave_table protect against odd memory address
 ; accesses.
 mds_note_table
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;0
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;12
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;24
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;36
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;48
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;60
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;72
-	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;84
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;0  =0
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;12 =1
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;24 =2
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;36 =3
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;48 =4
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;60 =5
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;72 =6
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;84 =7
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;96 =8
+	dc.b	 0, 2, 4, 6, 8,10,12,14,16,18,20,22 ;108=9
 mds_octave_table
 	dcb.b   12,0  ;0  =0
 	dcb.b	12,8  ;12 =1
@@ -1102,7 +1104,7 @@ mds_octave_table
 	dcb.b	12,80 ;120=10
 ; these bytes are just to pad the note_table, but it can be repurposed
 ; as long as the data just contains even 8-bit numbers
-	dcb.b	256-(96+132),88
+	dcb.b	256-(120+132),88
 
 ;======================================================================
 ; PSG envelope initialize
@@ -1930,10 +1932,11 @@ mds_psg3_update
 mds_psg_update
 	bsr.w	mds_psg_update_env
 	bsr.w	mds_pitch_update
+mds_psg_update_pitch
 	cmp.w	t_last_pitch(twork),d0
 	beq.w	mds_update_return
-	move.w	d0,t_last_pitch(twork)
 mds_psg_set_pitch
+	move.w	d0,t_last_pitch(twork)
 	bsr.w	mds_get_psg_pitch
 	move.b	d0,d1
 	andi.b	#$0f,d1
@@ -1950,20 +1953,40 @@ mds_psg_set_pitch
 mds_psgn_update
 	bsr.w	mds_psg_update_env
 	bsr.w	mds_pitch_update
+
+	moveq	#-64,chnid							; psg3 channel id
+	move.w	t_psg_nreset(twork),d1				; noise mode + reset
+	bmi.s	@noise_reset
+	bclr	#nf+nf_nmode,flag
+	bne.s	@noise_reset
+
 	cmp.w	t_last_pitch(twork),d0
 	beq.w	mds_update_return
-	move.w	d0,t_last_pitch(twork)
-	move.b	t_psg_nmode(twork),d1
-	beq.s	@no_psg3_control
 
-	move.b	d1,sound_psg						; set noise mode
-	move.b	#$c0,chnid							; set psg3 chnid
+;--------------------------------------
+; requested pitch reset
+;--------------------------------------
+	tst.b	d1
+	beq.s	@no_psg3_control
 	bra.s	mds_psg_set_pitch
 
+;--------------------------------------
+; requested noise mode reset
+;--------------------------------------
+@noise_reset
+	tst.b	d1
+	beq.s	@no_psg3_control
+	move.b	d1,sound_psg
+	bra.s	mds_psg_update_pitch
+
+;--------------------------------------
+; using preset sounds (no noise mode)
+;--------------------------------------
 @no_psg3_control
+	move.w	d0,t_last_pitch(twork)
 	ror.w	#8,d0
 	andi.b	#$07,d0
-	ori.b	#$e0,d0
+	ori.b	#$f0,d0
 	move.b	d0,sound_psg
 	bra.w	mds_update_return
 
