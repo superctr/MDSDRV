@@ -58,10 +58,13 @@ nf_enabled		rs.b	1			; envelopes enabled(must be bit7!)
 ;======================================================================
 	rsreset
 cf_drum_mode	rs.b	1			; drum mode enabled
-cf_psg3_control	rs.b	1			; write fnum to psg3
+				rs.b	1			;    (removed)
 cf_pcm_control	rs.b	1			; pcm instrument loaded
 cf_stop			rs.b	1			; stop channel
-cf_paused		rs.b	1			; channel is paused (stop flag)
+cf_suspend		rs.b	1			; track is paused and can be
+									;   restarted
+cf_background	rs.b	1			; track is deprioritized and
+									;   plays in the background
 
 ;======================================================================
 ; flag bitmasks
@@ -164,6 +167,8 @@ w_volume		rs.w	RCOUNT
 w_tmask			rs.w	RCOUNT		;track mask
 w_chmask		rs.w	RCOUNT		;channel usage mask
 
+w_priority		rs.b	1			; priority update flag
+w_comm			rs.b	1			; communication byte
 w_pcm_enable	rs.b	2			;pcm keyon enable
 
 w_fm3_mask		rs.b	1			;fm3 keyon operator mask

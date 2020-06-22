@@ -22,7 +22,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.1 200621"
+	dc.b	"MDSDRV0.1 200622"
 version_str_end
 
 ;======================================================================
@@ -70,7 +70,7 @@ mds_init
 	lea		w_track(a0),a1					;track addr
 	move.w	#TCOUNT-1,d1
 @next_track
-	move.b	@zero,t_note_flag(a1)			;clear flag
+	move.w	@zero,t_note_flag(a1)			;clear flag
 	move.w	@zero,t_peg_addr(a1)
 	move.l	a1,t_psg_eg_addr(a1)
 	move.w	#$ff0f,t_psg_eg_pos(a1)
@@ -233,14 +233,15 @@ mds_update
 @seq_step	equr	d1
 @gtempo		equr	d2
 
-	clr.l	rnum
 	lea		w_track(work),twork
 	lea		z80_bus_request,zreq
 	lea		z80_ram,zram
 
+	moveq	#(RCOUNT-1)<<1,rnum
 @next_request
 	move.w	w_request(work,rnum),@reqdata
-	bmi.w	mds_handle_request
+	bpl.s	mds_handle_request_return
+	bra.w	mds_handle_request
 
 ;----------------------------------------------------------------------
 mds_handle_request_return		equ *
@@ -267,16 +268,22 @@ mds_handle_request_return		equ *
 	move.w	@counter,w_counter(work,rnum)
 
 @request_done
-	addq	#2,rnum
-	cmpi.w	#RCOUNT<<1,rnum
-	bne		@next_request
+	subq.w	#2,rnum
+	bpl.s	@next_request
 
 ;----------------------------------------------------------------------
-; update voices
+; update priority if necessary
 ;----------------------------------------------------------------------
-mds_update_voices
+	tst.b	w_priority(work)
+	beq.s	mds_update_priority_return
+	bra.w	mds_update_priority
+
+mds_update_priority_return		equ	*
+;----------------------------------------------------------------------
+; update tracks and voices
+;----------------------------------------------------------------------
 	lea		w_track(work),twork				; first track's addr
-	move.w	#TCOUNT-1,tnum
+	moveq	#TCOUNT-1,tnum
 
 @next_voice
 	move.w	t_note_flag(twork),flag
@@ -292,29 +299,32 @@ mds_update_seq_return			equ	*
 
 	dbra	d4,mds_update_seq
 
-	lea		w_chmask(work),tmpa0			; channel mask
-	move.b	t_channel_id(twork),chnid		;check priority
-	move.b	t_request_id(twork),d0
-	rept	RCOUNT-1
-		beq.s	@has_priority
-		move.w	(tmpa0)+,d1
-		btst	chnid,d1
-		bne.s	@no_priority
-		subq.b	#2,d0						;next request
-	endr
-@has_priority
-	bclr	#cf+cf_stop,flag
-	beq.s	@no_stop
-	bset	#nf+nf_fm3,flag
-	bset	#nf+nf_key_off,flag
-	bclr	#nf+nf_enabled,flag
-@no_stop
+	btst	#cf+cf_background,flag			; skip voice update if bg
+	bne.s	mds_update_return
+
+	move.b	t_channel_id(twork),chnid
+	btst	#cf+cf_stop,flag
+	bne.s	@stop_track
+
+@do_voice_update
 	clr.w	d0
 	add.b	chnid,chnid
 	move.b	chnid,d0
 	add.b	d0,d0
 	add.b	chnid,d0
 	jmp		@ch_update_table(pc,d0)
+
+;----------------------------------------------------------------------
+; this code path is nonlinear in order to save some cycles
+; (this is the most unlikely code path)
+;----------------------------------------------------------------------
+@stop_track
+	bclr	#cf+cf_stop,flag
+	bset	#nf+nf_fm3,flag
+	bset	#nf+nf_key_off,flag
+	bclr	#nf+nf_enabled,flag
+	bra.s	@do_voice_update
+
 @no_priority
 	st		t_last_pitch(twork)
 	ori.l	#(nm_restore<<nf),flag
@@ -374,6 +384,7 @@ mds_handle_request
 @tempo		equr	d1						;global tempo
 @zero		equr	d1
 @tempreg	equr	d2
+	st.b	w_priority(work)				;set priority flag
 
 	bclr	#rf_stop,@reqdata
 	bne.w	@stop_song						;stop already playing song
@@ -480,6 +491,41 @@ mds_handle_request
 	clr.w	w_tmask(work,rnum)				;clear trackmask
 	clr.w	w_chmask(work,rnum)				;clear chmask
 	bra.w	mds_handle_request_return
+
+;======================================================================
+; update track priorities
+;----------------------------------------------------------------------
+mds_update_priority
+	clr.b	w_priority(work)				;clear priority flag
+	lea		w_track(work),twork				; first track's addr
+	move.w	#TCOUNT-1,tnum
+@next_voice
+	move.l	t_note_flag(twork),flag
+	btst	#cf+cf_suspend,flag
+	bne.s	@suspended
+	bmi.s	@voice_not_enabled
+@suspended
+	lea		w_chmask(work),tmpa0			; channel mask
+	move.b	t_channel_id(twork),chnid		;check priority
+	move.b	t_request_id(twork),d0
+	rept	RCOUNT-1
+		beq.s	@has_priority
+		move.w	(tmpa0)+,d1
+		btst	chnid,d1
+		bne.s	@no_priority
+		subq.b	#2,d0						;next request
+	endr
+@has_priority
+	bclr	#cf_background,t_channel_flag(twork)
+	bra.s	@voice_not_enabled
+@no_priority
+	st		t_last_pitch(twork)
+	ori.l	#(nm_restore<<nf)|(1<<(cf+cf_background)),flag
+	move.l	flag,t_note_flag(twork)
+@voice_not_enabled
+	lea		TSIZE(twork),twork				; next track
+	dbra	tnum,@next_voice
+	bra.w	mds_update_priority_return
 
 ;======================================================================
 ; update track sequences
@@ -624,7 +670,7 @@ mds_update_seq
 	move.b	t_stack_pos(twork),@cmd
 	bne		@cmd_return
 
-	;ori.l	#(nm_stop<<nf),flag
+	st		w_priority(work)
 	bset	#cf+cf_stop,flag
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
 
