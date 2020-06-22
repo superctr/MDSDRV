@@ -450,7 +450,8 @@ mds_handle_request
 	move.w	#$0030,t_ins(twork)				;ins/ins transpose
 	move.w	@zero,t_note(twork)				;note/transpose
 	move.w	@zero,t_trs(twork)				;transpose/portamento
-	move.w	#$8f00,t_vol(twork)				;vol/lfo_delay
+	move.w	#$8f00,t_vol(twork)				;vol/mtab repeat
+	move.w	@zero,t_mtab_addr(twork)		;mtab position
 
 	move.w	@zero,t_peg_addr(twork)			;pitch e.g.
 	move.w	@zero,t_peg_mod(twork)			;pitch e.g.
@@ -645,7 +646,7 @@ mds_update_seq
 	bra.w	@cmd_peg						;e8 pitch envelope
 	bra.w	@cmd_pan						;e9 panning
 	bra.w	@cmd_lfo						;ea lfo sensitivity
-	bra.w	@cmd_lfod						;eb lfo delay
+	bra.w	@cmd_mtab						;eb macro table
 	bra.w	@cmd_flg						;ec channel flags
 	bra.w	@cmd_fmcreg						;ed fm channel reg write
 	bra.w	@cmd_fmtl						;ee fm tl write
@@ -857,10 +858,9 @@ mds_update_seq
 	rts
 
 ;----------------------------------------------------------------------
-; lfod - set lfo delay
+; mtab - set macro table
 ;----------------------------------------------------------------------
-@cmd_lfod
-	move.b	0(tbase,@trackpos),t_lfo_delay(twork)
+@cmd_mtab
 	rts
 
 ;----------------------------------------------------------------------

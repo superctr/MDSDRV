@@ -109,11 +109,18 @@ t_ins_trs		rs.b	1			; instrument transpose (n*2)
 t_note			rs.b	1			; key code
 t_dtn			rs.b	1			; key fraction
 t_pitch			rs.w	1			; portamento modulator
+t_last_pitch	rs.w	1			; calculated pitch
 t_trs			rs.b	1			; transpose
 t_pta			rs.b	1			; portamento speed
 t_vol			rs.b	1			; volume
-t_lfo_delay		rs.b	1			; lfo delay
-t_last_pitch	rs.w	1			; calculated pitch
+
+;----------------------------------------------------------------------
+; macro table
+;----------------------------------------------------------------------
+t_mtab_repeat	rs.b	1			; macro table repeat count
+t_mtab_addr		rs.w	1			; macro table base address (0=off)
+t_mtab_delay	rs.b	1			; macro table delay counter
+t_mtab_pos		rs.b	1			; macro table position
 
 ;----------------------------------------------------------------------
 ; pitch envelope

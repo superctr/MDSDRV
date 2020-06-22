@@ -32,7 +32,7 @@ const char* chn_cmd[chn_cmd_cnt] =
 	"peg",		// 8 set pitch envelope
 	"pan",		// 9 set panning
 	"lfo",		//10 set lfo
-	"lfod",		//11 set lfo delay
+	"mtab",		//11 set macro table
 	"flg",		//12 set flag
 	"fmcreg",	//13 fm channel write
 	"fmtl",		//14 fm tl write
@@ -64,7 +64,7 @@ int main()
 	printf(";========================================================================\n");
 	printf("\tlist -\n");
 	printf("\tif def(MML)&(~def(MMLDEF))\n");
-	printf("MMLDEF equ 3\n");
+	printf("MMLDEF equ 4\n");
 	printf(";========================================================================\n");
 	printf("; note duration parameters (00-7f)\n");
 	printf(";========================================================================\n");

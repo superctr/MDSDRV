@@ -4,7 +4,7 @@
 ;========================================================================
 	list -
 	if def(MML)&(~def(MMLDEF))
-MMLDEF equ 3
+MMLDEF equ 4
 ;========================================================================
 ; note duration parameters (00-7f)
 ;========================================================================
@@ -170,7 +170,7 @@ pta equ $E7
 peg equ $E8
 pan equ $E9
 lfo equ $EA
-lfod equ $EB
+mtab equ $EB
 flg equ $EC
 fmcreg equ $ED
 fmtl equ $EE
