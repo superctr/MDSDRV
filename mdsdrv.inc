@@ -11,9 +11,9 @@ TSTACK_COUNT	equ		10			; stack size (in words)
 ;always
 work			equr	a0			; driver work
 twork			equr	a1			; track work
-tbase			equr	a2			; track base address
+a_sdtop			equr	a2			; sdtop
 tmpa0			equr	a4			; temp address reg
-tmpa1			equr	a5
+tmpa1			equr	a5			; temp address / track base address
 zreq			equr	a3			; track position
 zram			equr	a6
 
@@ -21,7 +21,6 @@ zram			equr	a6
 rnum			equr	d7			; request #  (low word)
 flag			equr	d7			; flags      (high word)
 tnum			equr	d6			; track #
-tmask			equr	d5			; track mask
 
 ; during voice processing
 chnid			equr	d5			; channel id
