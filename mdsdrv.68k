@@ -22,8 +22,9 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.1 200622"
+	dc.b	"MDSDRV0.1 200704"
 version_str_end
+	even
 
 ;======================================================================
 ; initialize sound driver
@@ -292,7 +293,7 @@ mds_update_priority_return		equ	*
 	bpl.s	@voice_not_enabled				;skip if not enabled
 	swap	flag
 
-	move.b	t_request_id(twork),rnum	;update sequence if needed
+	move.b	t_request_id(twork),rnum
 	move.w	w_seq_step(work,rnum),d5
 
 ;----------------------------------------------------------------------
@@ -545,13 +546,14 @@ mds_update_priority
 ;   flag   - updated track flags
 ; TRASHES
 ;   tmpa0,tmpa1
-;	d0-d5
+;	d0-d4
 mds_update_seq
 @tbase		equr	tmpa1
 @trackpos	equr	d0
 @cmd		equr	d1
 @cmdlen		equr	d2
 @tempreg	equr	d3
+@sp			equr	d4
 	subq.b	#1,t_counter(twork)
 	bcc.w	mds_update_seq_return
 
@@ -559,8 +561,10 @@ mds_update_seq
 ; command read loop
 ;----------------------------------------------------------------------
 @read_command
+	clr.w	@sp
 	move.l	t_base_addr(twork),@tbase
 	move.w	t_position(twork),@trackpos
+	move.b	t_stack_pos(twork),@sp
 	moveq	#1,@cmdlen
 
 @next_command
@@ -569,22 +573,27 @@ mds_update_seq
 	bmi.s	@cmd_80
 
 @cmd_rest
-	bset	#nf+nf_key_off,flag
-	bclr	#nf+nf_key_on,flag
 	move.b	@cmd,t_rest_time(twork)			;00-7f - rest
 	move.b	@cmd,t_counter(twork)
+
+@cmd_rest2
+	bset	#nf+nf_key_off,flag
+	bclr	#nf+nf_key_on,flag
 	move.w	@trackpos,t_position(twork)
+	move.b	@sp,t_stack_pos(twork)
 	bra.w	mds_update_seq_return
 
 @cmd_80
-	sub.b	#$81,@cmd						;81 - tie
-	beq.s	@cmd_tie
+	cmp.b	#$e0,@cmd
+	bcc.s	@cmd_other						;e0-ff - command
+	subi.b	#$82,@cmd
+	bcc.s	@cmd_note						;82-df - note
 	addq.b	#1,@cmd
-	beq.s	@cmd_rest2						;80 - rest (alternate)
-	cmp.b	#$60,@cmd
-	bcc.s	@cmd_other
+	beq.s	@cmd_tie						;81 - tie
+	move.b	t_rest_time(twork),t_counter(twork)
+	bra.s	@cmd_rest2						;80 - rest (alternate)
 
-	subq.b	#2,@cmd							;82-df - note
+@cmd_note
 	move.b	@cmd,t_note(twork)
 	bset	#nf+nf_key_on,flag
 	btst	#nf+nf_slur,flag
@@ -594,46 +603,36 @@ mds_update_seq
 	bne.s	@cmd_drum_mode
 
 @cmd_tie
-	lea		t_note_time(twork),tmpa0
-@cmd_read_delta
 	move.b	0(@tbase,@trackpos),@cmd		;read next command
-	bmi		@cmd_previous_delta
+	bmi.s	@cmd_previous_delta
 
 @cmd_new_delta
 	move.b	@cmd,t_counter(twork)
-	move.b	@cmd,(tmpa0)
+	move.b	@cmd,t_note_time(twork)
 	addq.w	#1,@trackpos
 	move.w	@trackpos,t_position(twork)
+	move.b	@sp,t_stack_pos(twork)
 	bra.w	mds_update_seq_return
 
 @cmd_previous_delta
-	move.b	(tmpa0),t_counter(twork)
+	move.b	t_note_time(twork),t_counter(twork)
 	move.w	@trackpos,t_position(twork)
-	bra.w	mds_update_seq_return
-
-@cmd_rest2
-	bset	#nf+nf_key_off,flag				;80 - rest 2
-	bclr	#nf+nf_key_on,flag
-	move.b	t_rest_time(twork),t_counter(twork)
-	move.w	@trackpos,t_position(twork)
+	move.b	@sp,t_stack_pos(twork)
 	bra.w	mds_update_seq_return
 
 @cmd_other
 	andi.w	#$1f,@cmd
 	moveq	#0,@cmdlen
 	move.b	@cmd_length_table(pc,@cmd),@cmdlen
-	lsl.b	#2,@cmd
-	pea		@next_command(pc)
+	add.b	@cmd,@cmd
+	add.b	@cmd,@cmd
 	jmp		@cmd_table(pc,@cmd)
 
 @cmd_drum_mode
 	andi.w	#$00ff,@cmd
-	clr.w	@tempreg
-	move.b	t_stack_pos(twork),@tempreg			; push current pos
-	move.w	@trackpos,t_stack(twork,@tempreg)
-	addq.b	#2,@tempreg
-	move.b	@tempreg,t_stack_pos(twork)
-	lsl.w	#1,@cmd								; get subroutine pos
+	move.w	@trackpos,t_stack(twork,@sp)		; push current pos
+	addq.b	#2,@sp
+	add.w	@cmd,@cmd							; get subroutine pos
 	move.w	0(@tbase,@cmd),@trackpos
 	moveq	#1,@cmdlen
 	bra.w	@next_command
@@ -677,9 +676,8 @@ mds_update_seq
 	bra.w	@cmd_lpbl						;fd loop break 2
 	bra.w	@cmd_pat						;fe subroutine
 @cmd_finish									;ff finish
-	clr.w	@cmd
-	move.b	t_stack_pos(twork),@cmd
-	bne		@cmd_return
+	tst.b	@sp
+	bne.s	@cmd_return
 
 	st		w_priority(work)
 	bset	#cf+cf_stop,flag
@@ -694,23 +692,22 @@ mds_update_seq
 	bclr	@cmd,@tempreg
 	and.w	@tempreg,w_chmask(work,rnum)
 
-	addq.w	#4,sp							;break out of command
 	move.w	@trackpos,t_position(twork)
+	move.b	@sp,t_stack_pos(twork)
 	bra.w	mds_update_seq_return
 
 @cmd_return
-	subq.b	#2,@cmd
-	move.b	@cmd,t_stack_pos(twork)
-	move.w	t_stack(twork,@cmd),@trackpos	; pop return address
+	subq.b	#2,@sp
+	move.w	t_stack(twork,@sp),@trackpos	; pop return address
 @cmd_dummy
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; slr - set note slur
 ;----------------------------------------------------------------------
 @cmd_slr
 	bset	#nf+nf_slur,flag
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; ins - set instrument (or PSG envelope)
@@ -745,7 +742,7 @@ mds_update_seq
 	move.b	(tmpa0)+,t_ins_trs(twork)
 	bset	#nf+nf_ins,flag
 	st		t_last_pitch(twork)				; may reset pitch
-	rts
+	bra.w	@next_command
 
 ;--------------------------------------
 ; psg
@@ -755,7 +752,7 @@ mds_update_seq
 	bclr	#nf+nf_slur,flag
 	move.w	tmpa0,t_psg_eg_addr(twork)
 	move.w	#$ff0f,t_psg_eg_pos(twork)
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; vol - set volume
@@ -763,37 +760,39 @@ mds_update_seq
 @cmd_vol
 	move.b	0(@tbase,@trackpos),t_vol(twork)
 	bset	#nf+nf_vol,flag
-	rts
+	bra.w	@next_command
+
 @cmd_volm
 	move.b	0(@tbase,@trackpos),@cmd
 	add.b	@cmd,t_vol(twork)
 	bset	#nf+nf_vol,flag
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; vol - set transpose
 ;----------------------------------------------------------------------
 @cmd_trs
 	move.b	0(@tbase,@trackpos),t_trs(twork)
-	rts
+	bra.w	@next_command
+
 @cmd_trsm
 	move.b	0(@tbase,@trackpos),@cmd
 	add.b	@cmd,t_trs(twork)
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; dtn - set detune
 ;----------------------------------------------------------------------
 @cmd_dtn
 	move.b	0(@tbase,@trackpos),t_dtn(twork)
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; pta - set portamento
 ;----------------------------------------------------------------------
 @cmd_pta
 	move.b	0(@tbase,@trackpos),t_pta(twork)
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; peg - set pitch envelope
@@ -806,10 +805,11 @@ mds_update_seq
 	beq.s	@cmd_peg_off
 	lsl.w	#1,@cmd
 	move.w	-2(@tbase,@cmd),t_peg_addr(twork)
-	rts
+	bra.w	@next_command
+
 @cmd_peg_off
 	move.w	@cmd,t_peg_addr(twork)
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; pan - set panning
@@ -820,15 +820,14 @@ mds_update_seq
 @cmd_pan
 	move.b	t_channel_id(twork),@cmd
 	cmpi.b	#6,@cmd							; fm only
-	bcc.s	@cmd_pan_dummy
+	bcc.w	@next_command
 
 	move.b	t_fm_pan_lfo(twork),@cmd
 	andi.b	#$3f,@cmd
 	or.b	0(@tbase,@trackpos),@cmd
 	move.b	@cmd,t_fm_pan_lfo(twork)
 	bset	#nf+nf_pan_lfo,flag
-@cmd_pan_dummy
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; lfo - set lfo depth (channel specific setting)
@@ -846,7 +845,7 @@ mds_update_seq
 	or.b	0(@tbase,@trackpos),@cmd
 	move.b	@cmd,t_fm_pan_lfo(twork)
 	bset	#nf+nf_pan_lfo,flag
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; nmode - set noise mode
@@ -865,13 +864,13 @@ mds_update_seq
 	moveq	#12,@cmd
 @cmd_nmode_settrs
 	move.b	@cmd,t_trs(twork)
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; mtab - set macro table
 ;----------------------------------------------------------------------
 @cmd_mtab
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; flg - set channel flags
@@ -889,17 +888,19 @@ mds_update_seq
 	beq.s	@cmd_flg_off
 	addi.b	#cf,@cmd
 	bset	@cmd,flag
-	rts
+	bra.w	@next_command
+
 @cmd_flg_off
 	addi.b	#cf,@cmd
 	bclr	@cmd,flag
-	rts
+	bra.w	@next_command
+
 @cmd_flg_fm3
 	ori.l	#(1<<(nf+nf_fm3))|(1<<(nf+nf_vol)),flag
 	lsl.b	#3,@cmd					;TODO: could optimize by shifting
 	ori.b	#$80,@cmd				; set bit 7
 	move.b	@cmd,t_op_mask(twork)	; we're reusing MSB of t_base_addr
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; fmreg - write to FM chip
@@ -909,25 +910,25 @@ mds_update_seq
 	move.b	0(@tbase,@trackpos),$4000(zram)
 	move.b	1(@tbase,@trackpos),$4001(zram)				;24
 	mds_z80_start
-	rts
+	bra.w	@next_command
 
 @cmd_fmcreg
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; fmtl - set FM TL
 ;----------------------------------------------------------------------
 @cmd_fmtl
-	rts
+	bra.w	@next_command
 
 @cmd_fmtlm
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; comm - communication byte
 ;----------------------------------------------------------------------
 @cmd_comm
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; tempo - set song tempo
@@ -936,97 +937,81 @@ mds_update_seq
 	clr.w	@cmd
 	move.b	0(@tbase,@trackpos),@cmd
 	move.w	@cmd,w_tempo(work,rnum)
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; lp - loop start
 ;----------------------------------------------------------------------
 @cmd_lp
-	clr.w	@cmd
-	move.b	t_stack_pos(twork),@cmd
-	move.b	#$ff,t_stack(twork,@cmd)
-	move.w	@trackpos,2+t_stack(twork,@cmd)
-	addq.b	#4,@cmd
-@cmd_lpf_exit
-	move.b	@cmd,t_stack_pos(twork)
-	rts
+	move.b	#$ff,t_stack(twork,@sp)
+	move.w	@trackpos,2+t_stack(twork,@sp)
+	addq.b	#4,@sp
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; lpf - loop finish
 ;----------------------------------------------------------------------
 @cmd_lpf
-	clr.w	@cmd
-	move.b	t_stack_pos(twork),@cmd
-	subq.b	#4,@cmd
-	move.b	t_stack(twork,@cmd),@tempreg
+	subq.b	#4,@sp
+	move.b	t_stack(twork,@sp),@tempreg
 	cmpi.b	#$ff,@tempreg
 	bne.s	@cmd_lpf_decrease
 	move.b	0(@tbase,@trackpos),@tempreg
+
 @cmd_lpf_decrease
 	subq.b	#1,@tempreg
-	beq.s	@cmd_lpf_exit
-	move.b	@tempreg,t_stack(twork,@cmd)
-	move.w	2+t_stack(twork,@cmd),@trackpos
+	beq.w	@next_command
+	move.b	@tempreg,t_stack(twork,@sp)
+	move.w	2+t_stack(twork,@sp),@trackpos
 	moveq	#1,@cmdlen
-	rts
+
+@cmd_lpb_skip
+	addq.b	#4,@sp
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; lpb - loop break
 ;----------------------------------------------------------------------
 @cmd_lpb
-	clr.w	@cmd
-	move.b	t_stack_pos(twork),@cmd
-	subq.b	#4,@cmd  ;optimize with stack-4?
-	cmpi.b	#1,t_stack(twork,@cmd)
+	subq.b	#4,@sp  ;optimize with stack-4?
+	cmpi.b	#1,t_stack(twork,@sp)
 	bne.s	@cmd_lpb_skip
 	move.b	0(@tbase,@trackpos),@cmdlen
-	move.b	@cmd,t_stack_pos(twork)
-@cmd_lpb_skip
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; lpbl - loop break (long)
 ;----------------------------------------------------------------------
 @cmd_lpbl
-	clr.w	@cmd
-	move.b	t_stack_pos(twork),@cmd
-	subq.b	#4,@cmd
-	tst.b	t_stack(twork,@cmd)
+	subq.b	#4,@sp
+	tst.b	t_stack(twork,@sp)
 	bne.s	@cmd_lpb_skip
 	move.b	0(@tbase,@trackpos),@tempreg ;no need to align 16-bit
 	lsl.w	#8,@tempreg
 	move.b	1(@tbase,@trackpos),@tempreg
 	move.w	@tempreg,@cmdlen
-	move.b	@cmd,t_stack_pos(twork)
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; pat - subroutine
 ;----------------------------------------------------------------------
 @cmd_pat
-	clr.w	@cmd
-	move.b	t_stack_pos(twork),@cmd				; push current pos
 	addq.w	#2,@trackpos
-	move.w	@trackpos,t_stack(twork,@cmd)
-	addq.b	#2,@cmd
-	move.b	@cmd,t_stack_pos(twork)
+	move.w	@trackpos,t_stack(twork,@sp)
+	addq.b	#2,@sp
 	clr.w	@cmd
 	move.b	-2(@tbase,@trackpos),@cmd			; get subroutine pos
-	lsl.w	#1,@cmd
+	add.w	@cmd,@cmd
 	move.w	0(@tbase,@cmd),@trackpos
-	rts
+	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; dmfinish - drum mode finish byte
 ;----------------------------------------------------------------------
 @cmd_dmfinish
-	clr.w	@cmd
 	move.b	0(@tbase,@trackpos),t_note(twork)
-	move.b	t_stack_pos(twork),@cmd
-	subq.b	#2,@cmd
-	move.b	@cmd,t_stack_pos(twork)
-	move.w	t_stack(twork,@cmd),@trackpos		; pop return address
-	addq.w	#4,sp								;break out of command
+	subq.b	#2,@sp
+	move.w	t_stack(twork,@sp),@trackpos		; pop return address
 	bra.w	@cmd_tie
 
 ;----------------------------------------------------------------------
@@ -1039,7 +1024,7 @@ mds_update_seq
 	lsl.w	@cmd
 	move.b	1(@tbase,@cmd),t_ins(twork)			; instr address
 	bset	#cf+cf_pcm_control,flag
-	rts
+	bra.w	@next_command
 
 ;======================================================================
 ; check channel priority
