@@ -1216,10 +1216,10 @@ mds_octave_table
 ; TRASHES
 ;  tmpa1,d1,d2,d3,d4
 mds_pitch_update
-	moveq	#0,d0
-	move.b	t_note(twork),d1
-	add.b	t_trs(twork),d1
-	lsl.w	#8,d1
+	move.w	t_note(twork),d1
+	clr.b	d1
+	add.w	t_trs(twork),d1
+	clr.b	d1
 	move.b	t_dtn(twork),d0							; signed value
 	ext.w	d0
 	add.w	d1,d0									; d0=porta_target
