@@ -8,12 +8,12 @@ A sound driver for Sega Mega Drive/Genesis.
 	Each track can be assigned to a channel with 4 levels of priority.
 - Can use any combination of FM, PSG and PCM sound sources.
 - FM3 special mode:
-	- Can assign each or a pair of FM3 operators to a separate track
-	  with volume control.
+	- Can assign each or a pair of FM3 operators to one or more
+		separate tracks with volume control.
 - PCM playback modes:
 	- 1 channel PCM playback at ~16 kHz with volume control
 	- 2 channel PCM playback at ~13.3 kHz with volume control
-- Compact sequence format (similar to SMPS)
+- Compact sequence format
 	- Sound data can be compiled from MML files using `ctrmml`
 - Various effects supported:
 	- PSG volume envelopes
@@ -28,6 +28,8 @@ A sound driver for Sega Mega Drive/Genesis.
 
 ### Upcoming features
 - Macro tables
+	- Allows for channel parameters and registers to be modified
+		automatically as a note is playing.
 
 ## How to use
 
