@@ -6,27 +6,31 @@
 INCLUDE_MDSSEQ equ 1
 	include "../mdsseq.inc"
 
-sdpcm:
-	dc.l	pcm_tab
+sddata:
+	dc.b	$10,$01,$1f,$00		; PSG envelope init & magic bytes
+	dc.w	#$0002				; MDSDRV version
 sdcnt:
-	dc.w	SOUND_MAX
+	dc.w	SOUND_MAX			; sound count
 sdtop:
 	rsreset
-SOUND_00	rs.b	1
-	dc.l	bgm00-sdtop			;bgm 01
+			rs.b	1
+	dc.l	pcm_tab-sdtop		; offset to pcm table
 SOUND_01	rs.b	1
-	dc.l	bgm01-sdtop			;bgm 02
+	dc.l	bgm01-sdtop			;bgm 01
 SOUND_02	rs.b	1
-	dc.l	bgm02-sdtop			;bgm 03
+	dc.l	bgm02-sdtop			;bgm 02
 SOUND_03	rs.b	1
-	dc.l	bgm03-sdtop			;bgm 04
+	dc.l	bgm03-sdtop			;bgm 03
 SOUND_04	rs.b	1
-	dc.l	bgm04-sdtop			;bgm 05
+	dc.l	bgm04-sdtop			;bgm 04
 SOUND_05	rs.b	1
 	dc.l	bgm05-sdtop			;bgm 05
 SOUND_06	rs.b	1
-	dc.l	bgm06-sdtop			;bgm 06
+	dc.l	bgm06-sdtop			;bgm 05
+SOUND_07	rs.b	1
+	dc.l	bgm07-sdtop			;bgm 06
 SOUND_MAX	rs.b	0
+
 
 SD_FM_00
 	dc.b	$00,$42,$26,$01		;dt/mul
@@ -38,22 +42,42 @@ SD_FM_00
 	dc.b	$0f,$32,$0b,$00		;tl
 	dc.b	$3a,$30				;fb/alg,transpose
 
+; PSG envelope format:
+; 00    = stop envelope
+; 01    = sustain
+; 02 nn = loop to position nn
+; 10-ff = xy = set volume to y for x frames
+; (notice: volume is inverted, 15 is silence and 0 is loudest)
+
 SD_PSG_00
-	dc.b	$14,$12,$50,$61,$62,$43,$01,$10,$11,$22,$13,$14,$15,$26,$17,$18
-	dc.b	$29,$1a,$1b,$1c,$2d,$1e,$1f,$00
+	dc.b	$14,$12,$50,$61,$62,$43,
+	dc.b	$01									; sustain
+	dc.b	$10,$11,$22,$13,$14,$15,$26,$17
+	dc.b	$18,$29,$1a,$1b,$1c,$2d,$1e,$1f
+	dc.b	$00									; stop envelope
+
 	even
-SD_PEG_00
-	dc.b	$00,$00,$00,$13,$00,$00,$2a,$02,$00,$80,$d6,$05,$ff,$80,$2a,$02
-	dc.b	$7f,$01
+
+; Pitch envelope format:
+;            ,---------- initial pitch value
+;            |     ,---- delta (value added every frame)
+;            |     |  ,- time until next change (-1 frame)
+SD_PEG_00;   |     |  |
+	dc.w	$0000,$0013		; 00 : wait 20 frames
+	dc.w	$0000,$2a02		; 01 : increase with 42 for 3 frames
+	dc.w	$0080,$d605		; 02 : decrease with 42 for 6 frames
+	dc.w	$ff80,$2a02		; 03 : increase with 42 for 3 frames
+	dc.w	$7f01			; 04 : go to position 01
+
 	even
 
 ;====================================================================
 ;  test bgm 01
 ;====================================================================
-bgm00:
+bgm01:
 @TTAB
 	dc.w	@BASE-@TTAB			;offset to song base
-	dc.w	$c000				;track enable mask
+	dc.w	$0002				;track count
 	dc.w	$0000,@T0-@BASE		;channel select(hi) channel flags(lo), track position
 	dc.w	$0400,@T1-@BASE		;channel select(hi) channel flags(lo), track position
 
@@ -80,10 +104,10 @@ bgm00:
 ;====================================================================
 ;  test bgm 02 - pitch eg test
 ;====================================================================
-bgm01:
+bgm02:
 @TTAB
 	dc.w	@BASE-@TTAB			;offset to song base
-	dc.w	$8000				;track enable mask
+	dc.w	$0001				;track count
 	dc.w	$0000,@T0-@BASE		;channel select(hi) channel flags(lo), track position
 
 @BASE:
@@ -109,10 +133,10 @@ bgm01:
 ;====================================================================
 ;  test bgm 03 - stack test
 ;====================================================================
-bgm02:
+bgm03:
 @TTAB
 	dc.w	@BASE-@TTAB			;offset to song base
-	dc.w	$8000				;track enable mask
+	dc.w	$0001				;track count
 	dc.w	$0000,@T0-@BASE		;channel select(hi) channel flags(lo), track position
 
 @BASE:
@@ -138,12 +162,12 @@ bgm02:
 	even
 
 ;====================================================================
-;  test bgm 05 - drum mode test
+;  test bgm 04 - drum mode test
 ;====================================================================
 bgm04:
 @TTAB
 	dc.w	@BASE-@TTAB			;offset to song base
-	dc.w	$8000				;track enable mask
+	dc.w	$0001				;track count
 	dc.w	$0000,@T0-@BASE		;channel select(hi) channel flags(lo), track position
 
 @BASE:
@@ -171,12 +195,12 @@ bgm04:
 	even
 
 ;====================================================================
-;  test bgm 06 - psg test
+;  test bgm 05 - psg test
 ;====================================================================
 bgm05:
 @TTAB
 	dc.w	@BASE-@TTAB			;offset to song base
-	dc.w	$8000				;track enable mask
+	dc.w	$0001				;track count
 	dc.w	$0600,@T0-@BASE		;channel select(hi) channel flags(lo), track position
 
 @BASE:
@@ -196,12 +220,12 @@ bgm05:
 	even
 
 ;====================================================================
-;  test bgm 07 - psg noise test
+;  test bgm 06 - psg noise test
 ;====================================================================
 bgm06:
 @TTAB
 	dc.w	@BASE-@TTAB			;offset to song base
-	dc.w	$8000				;track enable mask
+	dc.w	$0001				;track count
 	dc.w	$0900,@T0-@BASE		;channel select(hi) channel flags(lo), track position
 
 @BASE:
@@ -222,12 +246,12 @@ bgm06:
 	even
 
 ;====================================================================
-;  test bgm 04 - music (Please don't sue me, SNK)
+;  test bgm 07 - music (Please don't sue me, SNK)
 ;====================================================================
-bgm03:
+bgm07:
 @TTAB
 	dc.w	@BASE-@TTAB			;offset to song base
-	dc.w	$f000				;track enable mask
+	dc.w	$0004				;track count
 	dc.w	$0000,@T0-@BASE		;channel select(hi) channel flags(lo), track position
 	dc.w	$0100,@T1-@BASE		;channel select(hi) channel flags(lo), track position
 	dc.w	$0200,@T2-@BASE		;channel select(hi) channel flags(lo), track position

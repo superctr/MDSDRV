@@ -1,6 +1,8 @@
 ;======================================================================
 ; sound driver work memory
 ;======================================================================
+MDSDRV_VER		equ		$0002		; sound driver version
+
 RCOUNT			equ		4			; request count
 TCOUNT			equ		16			; track count
 TSTACK_COUNT	equ		10			; stack size (in words)
@@ -169,7 +171,7 @@ w_request		rs.w	RCOUNT		;sound request
 w_tempo			rs.w	RCOUNT
 w_counter		rs.w	RCOUNT		;tempo counter
 w_seq_step		rs.w	RCOUNT		;sequence step counter (modulo)
-w_volume		rs.w	RCOUNT
+w_volume		rs.w	RCOUNT		;global volume
 w_tmask			rs.w	RCOUNT		;track mask
 w_chmask		rs.w	RCOUNT		;channel usage mask
 

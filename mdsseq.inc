@@ -4,7 +4,7 @@
 ;========================================================================
 	list -
 	if def(MML)&(~def(MMLDEF))
-MMLDEF equ 4
+MMLDEF equ $0002
 ;========================================================================
 ; note duration parameters (00-7f)
 ;========================================================================
@@ -177,8 +177,9 @@ fmtl equ $EE
 fmtlm equ $EF
 pcm equ $F0
 ;========================================================================
-; system commands (f6-ff)
+; system commands (f5-ff)
 ;========================================================================
+jump equ $F5
 fmreg equ $F6
 dmfinish equ $F7
 comm equ $F8
@@ -197,6 +198,6 @@ mds_rest equ $80
 mds_tie equ $81
 mds_note_start equ $82
 mds_chn_cmd_base equ $E0
-mds_sys_cmd_base equ $F6
+mds_sys_cmd_base equ $F5
 	endif
 	list +

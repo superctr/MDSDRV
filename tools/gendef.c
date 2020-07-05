@@ -41,9 +41,10 @@ const char* chn_cmd[chn_cmd_cnt] =
 };
 
 #define sys_cmd_base(cmd) (0x100-sys_cmd_cnt + cmd)
-#define sys_cmd_cnt 10
+#define sys_cmd_cnt 11
 const char* sys_cmd[sys_cmd_cnt] =
 {
+	"jump",		//-11 jump
 	"fmreg",	//-10 fm register write
 	"dmfinish",	// -9 drum mode finish
 	"comm",		// -8 communication byte
@@ -64,7 +65,7 @@ int main()
 	printf(";========================================================================\n");
 	printf("\tlist -\n");
 	printf("\tif def(MML)&(~def(MMLDEF))\n");
-	printf("MMLDEF equ 4\n");
+	printf("MMLDEF equ $0002\n");
 	printf(";========================================================================\n");
 	printf("; note duration parameters (00-7f)\n");
 	printf(";========================================================================\n");

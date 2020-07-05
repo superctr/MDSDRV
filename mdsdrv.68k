@@ -22,7 +22,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.1 200704"
+	dc.b	"MDSDRV0.2 200705"
 version_str_end
 	even
 
@@ -33,14 +33,22 @@ version_str_end
 ;	a0 - pointer to work area
 ;   a1 - pointer to request base table (sdtop)
 ;   a2 - pointer to PCM data
+; OUTPUT
+;   d0 - zero if successful, non-zero if not
 ; TRASHES
-;   a0-a1, d0-d1
+;   a0-a1, d1
 mds_init
+@ver		equr d0
 @zero		equr d0
+	cmpi.l	#$10011f00,(a1)+				;compare magic value
+	bne.w	mds_init_error
 
-	lea		6(a1),a1						;add offset to sdtop
+	move.l	(a1)+,@ver
 	move.l	a1,w_sdtop(a0)					;set sdtop
-	lea		mds_psg_init(pc),a1
+	swap	@ver
+
+	cmpi.w	#MDSDRV_VER,@ver				;compare version
+	bne.w	mds_init_error
 
 	clr.l	@zero
 	move.l	@zero,w_request(a0)				;clear request
@@ -93,6 +101,14 @@ mds_halt
 
 	reset_z80
 	start_z80
+
+	clr.w	d0
+	rts
+
+mds_init_error
+	clr.l	d0
+	move.l	d0,w_sdtop(work)
+	subq.w	#1,d0
 	rts
 
 ;======================================================================
@@ -384,14 +400,16 @@ mds_update_return				equ *
 ;   -
 ; TRASHES
 ;	tmpa0, tmpa1
-;	d0-d3, tnum
+;	d0-d4, tnum
 mds_handle_request
 @tbase		equr	tmpa1
 @reqdata	equr	d0
 @tempo		equr	d1						;global tempo
 @zero		equr	d1
 @tempreg	equr	d2
+@tcount		equr	d3
 @tmask		equr	d3
+
 	st.b	w_priority(work)				;set priority flag
 
 	bclr	#rf_stop,@reqdata
@@ -402,39 +420,61 @@ mds_handle_request
 ;----------------------------------------------------------------------
 	bclr	#rf_active,@reqdata
 	move.w	@reqdata,w_request(work,rnum)	;store request flag
-
-	subq.w	#1,@reqdata						;subtract sound codes
-	bmi.w	mds_handle_request_return		;0 will do nothing
+	beq.w	mds_handle_request_return		;0 will do nothing
 
 ;----------------------------------------------------------------------
 ; start song playback
 ;----------------------------------------------------------------------
-	move.l	a_sdtop,tmpa0
 
-	cmp.w	-2(tmpa0),@reqdata				;check if out of bounds
-	bcc.w	mds_handle_request_return
+	move.l	a_sdtop,@zero					;check that sdtop is valid
+	beq.w	mds_handle_request_return
+	exg		@zero,tmpa0
+
+	cmp.w	-2(a_sdtop),@reqdata			;check if out of bounds
+	bhi.w	mds_handle_request_return
 
 	move.w	w_gtempo(work),@tempo
 	subq.w	#1,@tempo
 	move.w	@tempo,w_tempo(work,rnum)		;initial tempo
+
 	clr.w	@zero
 	move.w	@zero,w_counter(work,rnum)
 	move.w	@zero,w_seq_step(work,rnum)
+	move.w	@zero,w_tmask(work,rnum)
 
 	lsl.w	#2,@reqdata						;request table
-	adda.l	0(tmpa0,@reqdata),tmpa0			;location of song header
+	adda.l	0(a_sdtop,@reqdata),tmpa0		;location of song header
 
 	move.l	tmpa0,@tbase
 	adda.w	(tmpa0)+,@tbase					;song base offset
-	move.w	(tmpa0)+,w_tmask(work,rnum)		;track mask
+
+	clr.w	@tcount
+	move.b	(tmpa0)+,@tcount				;song volume
+	move.w	@tcount,w_volume(work,rnum)
+
+	move.b	(tmpa0)+,@tcount				;track count
+	subq.b	#1,@tcount
+	bcs.w	mds_handle_request_return
+
 	lea		w_track(work),twork
 	move.w	#TCOUNT-1,tnum
-	move.w	w_tmask(work,rnum),@tmask
 
+;----------------------------------------------------------------------
+; find free track slots
+;----------------------------------------------------------------------
 @next_track
-	btst	tnum,@tmask
-	beq.w	@skip_track
+	move.w	(twork),@tempreg
+	andi.w	#($100<<nf_enabled)|($01<<cf_suspend),@tempreg
+	beq.s	@use_track
 
+	lea		TSIZE(twork),twork				;track is already in use
+	dbra	tnum,@next_track
+	bra.w	mds_handle_request_return
+
+;----------------------------------------------------------------------
+; initialize track
+;----------------------------------------------------------------------
+@use_track
 	move.l	@tbase,t_base_addr(twork)
 
 	move.b	(tmpa0)+,@reqdata				;channel id
@@ -444,21 +484,17 @@ mds_handle_request
 	or.w	rnum,@reqdata
 	move.w	@reqdata,t_channel_id(twork)
 
-	clr.w	@tempreg						;allocate channel
+	move.w	@zero,@tempreg					;allocate track
+	bset	tnum,@tempreg
+	or.w	@tempreg,w_tmask(work,rnum)
+
+	move.w	@zero,@tempreg					;allocate channel
 	bset	@reqdata,@tempreg
 	or.w	@tempreg,w_chmask(work,rnum)
 
-	cmp.w	#ct_psg<<8,@reqdata
-	bcs.s	@not_psg
-	move.w	@zero,t_psg_nreset(twork)		;noise mode initialize
-	move.w	@zero,t_psg_eg_addr(twork)		;psg eg initialize
-	move.w	#$ff0f,t_psg_eg_pos(twork)
-	bra.s	@not_fm
-
-@not_psg
-	move.b	#$c0,t_fm_pan_lfo(twork)		;initial panning
-
-@not_fm
+;--------------------------------------
+; initialize track memory
+;--------------------------------------
 	st		t_last_pitch(twork)				;previous pitch
 	move.w	#$0030,t_ins(twork)				;ins/ins transpose
 	move.w	@zero,t_note(twork)				;note/transpose
@@ -473,9 +509,27 @@ mds_handle_request
 	move.w	#$0b0b,t_rest_time(twork)		;default time (-1)
 	move.b	@zero,t_stack_pos(twork)
 
-@skip_track
-	lea		TSIZE(twork),twork				;next track
-	dbra	tnum,@next_track
+	cmp.w	#ct_psg<<8,@reqdata
+	bcs.s	@not_psg
+
+;--------------------------------------
+; psg initialize
+;--------------------------------------
+	move.w	@zero,t_psg_nreset(twork)		;noise mode initialize
+	move.w	#$fff8,t_psg_eg_addr(twork)		;psg eg initialize
+	move.w	#$ff0f,t_psg_eg_pos(twork)
+	bra.s	@not_fm
+
+;--------------------------------------
+; fm initialize
+;--------------------------------------
+@not_psg
+	move.b	#$c0,t_fm_pan_lfo(twork)		;initial panning
+
+@not_fm
+	lea		TSIZE(twork),twork
+	subq	#1,@tcount
+	dbcs	tnum,@next_track
 	bra.w	mds_handle_request_return
 
 ;----------------------------------------------------------------------
@@ -642,7 +696,7 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_length_table
 	dc.b	1,2,2,2, 2,2,2,2, 2,2,2,2, 2,3,2,2		;e0
-	dc.b	2,0,0,0, 0,0,3,0, 2,2,1,2, 2,3,1,0		;f0
+	dc.b	2,0,0,0, 0,3,3,0, 2,2,1,2, 2,3,1,0		;f0
 @cmd_table
 	bra.w	@cmd_slr						;e0 slur
 	bra.w	@cmd_ins						;e1 instrument
@@ -665,7 +719,7 @@ mds_update_seq
 	bra.w	@cmd_finish						;f2
 	bra.w	@cmd_finish						;f3
 	bra.w	@cmd_finish						;f4
-	bra.w	@cmd_finish						;f5
+	bra.w	@cmd_jump						;f5 jump
 	bra.w	@cmd_fmreg						;f6 fm register write
 	bra.w	@cmd_dmfinish					;f7 drum mode finish
 	bra.w	@cmd_comm						;f8 communication byte
@@ -964,8 +1018,6 @@ mds_update_seq
 	move.b	@tempreg,t_stack(twork,@sp)
 	move.w	2+t_stack(twork,@sp),@trackpos
 	moveq	#1,@cmdlen
-
-@cmd_lpb_skip
 	addq.b	#4,@sp
 	bra.w	@next_command
 
@@ -973,23 +1025,30 @@ mds_update_seq
 ; lpb - loop break
 ;----------------------------------------------------------------------
 @cmd_lpb
-	subq.b	#4,@sp  ;optimize with stack-4?
-	cmpi.b	#1,t_stack(twork,@sp)
-	bne.s	@cmd_lpb_skip
-	move.b	0(@tbase,@trackpos),@cmdlen
+	cmpi.b	#1,t_stack-4(twork,@sp)
+	bne.w	@next_command
+	subq.b	#4,@sp
+	clr.w	@tempreg
+	move.b	0(@tbase,@trackpos),@tempreg
+	add.w	@tempreg,@cmdlen
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; lpbl - loop break (long)
 ;----------------------------------------------------------------------
 @cmd_lpbl
-	subq.b	#4,@sp
-	tst.b	t_stack(twork,@sp)
-	bne.s	@cmd_lpb_skip
-	move.b	0(@tbase,@trackpos),@tempreg ;no need to align 16-bit
+	cmpi.b	#1,t_stack-4(twork,@sp)
+	bne.w	@next_command
+	subq.b	#4,@sp								; fall-through...
+
+;----------------------------------------------------------------------
+; jump - jump to offset
+;----------------------------------------------------------------------
+@cmd_jump
+	move.b	0(@tbase,@trackpos),@tempreg		; read 16-bit param
 	lsl.w	#8,@tempreg
 	move.b	1(@tbase,@trackpos),@tempreg
-	move.w	@tempreg,@cmdlen
+	add.w	@tempreg,@cmdlen
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
@@ -1148,18 +1207,6 @@ mds_octave_table
 	dcb.b	256-(120+132),88
 
 ;======================================================================
-; PSG envelope initialize
-;----------------------------------------------------------------------
-mds_psg_init
-	dc.b	$10,$01,$1f,$00
-
-;======================================================================
-; dummy routine
-;----------------------------------------------------------------------
-mds_ch_dummy
-	rts
-
-;======================================================================
 ; Pitch update
 ;----------------------------------------------------------------------
 ; INPUT
@@ -1223,7 +1270,8 @@ mds_pitch_update
 
 	clr.w	d1
 	move.b	t_peg_pos(twork),d1
-	lsl.w	#2,d1
+	add.w	d1,d1
+	add.w	d1,d1
 	move.w	t_peg_mod(twork),d2						;d2=modulator
 
 	move.b	t_peg_delay(twork),d3
@@ -1882,7 +1930,7 @@ mds_psg_update_env
 	move.b	t_psg_eg_pos(twork),@pos
 	addq.b	#1,@pos
 	beq.s	@silence							; position FF = silence
-	move.w	t_psg_eg_addr(twork),tmpa1
+	movea.w	t_psg_eg_addr(twork),tmpa1
 	adda.l	a_sdtop,tmpa1
 	move.b	-1(tmpa1,@pos),@cmd
 
@@ -2142,7 +2190,7 @@ mds_pcm_key_off
 ; Upload Z80 program. Assumes Z80 is already stopped
 ;----------------------------------------------------------------------
 mds_z80_init
-	move.l	a0,-(sp)					;backup work
+	move.l	(a0),-(sp)					;backup work
 	lea		@z80_driver(pc),a0			;upload Z80 driver
 	lea		z80_ram,a1
 
@@ -2172,8 +2220,7 @@ mds_z80_init
 
 	lea		z80_ram+z_stab,a1
 	move.l	(sp)+,a0					; get work
-	move.l	(a0),a0
-	adda.l	-6(a0),a0					; get pcm table
+	adda.l	(a0),a0						; get pcm table
 	move.w	(a0)+,d0
 	beq.s	@skip
 	subq.w	#1,d0
