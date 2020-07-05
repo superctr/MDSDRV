@@ -5,7 +5,7 @@ MDSDRV_VER		equ		$0002		; sound driver version
 
 RCOUNT			equ		4			; request count
 TCOUNT			equ		16			; track count
-TSTACK_COUNT	equ		10			; stack size (in words)
+TSTACK_COUNT	equ		8			; stack size (in words)
 
 ;======================================================================
 ; register define

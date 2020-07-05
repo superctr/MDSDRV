@@ -81,7 +81,7 @@ mds_init
 @next_track
 	move.w	@zero,t_note_flag(a1)			;clear flag
 	move.w	@zero,t_peg_addr(a1)
-	move.l	a1,t_psg_eg_addr(a1)
+	move.w	#$fff8,t_psg_eg_addr(a1)
 	move.w	#$ff0f,t_psg_eg_pos(a1)
 	move.b	#RCOUNT<<1,t_request_id(a1)		;channel is free
 
@@ -545,6 +545,7 @@ mds_handle_request
 	btst	tnum,@tmask						;track id
 	beq.w	@stop_skip_track
 	bset.b	#cf_stop,t_channel_flag(twork)
+	bclr.b	#cf_suspend,t_channel_flag(twork)
 	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
 
 @stop_skip_track
@@ -626,6 +627,9 @@ mds_update_seq
 	move.b	-1(@tbase,@trackpos),@cmd
 	bmi.s	@cmd_80
 
+;--------------------------------------
+; handle rest ($00..$7f)
+;--------------------------------------
 @cmd_rest
 	move.b	@cmd,t_rest_time(twork)			;00-7f - rest
 	move.b	@cmd,t_counter(twork)
@@ -637,43 +641,56 @@ mds_update_seq
 	move.b	@sp,t_stack_pos(twork)
 	bra.w	mds_update_seq_return
 
+;--------------------------------------
+; handle $80..$ff
+;--------------------------------------
 @cmd_80
-	cmp.b	#$e0,@cmd
-	bcc.s	@cmd_other						;e0-ff - command
-	subi.b	#$82,@cmd
-	bcc.s	@cmd_note						;82-df - note
+	cmp.b	#mds_chn_cmd_base,@cmd
+	bcc.s	@cmd_other						; e0-ff - command
+	subi.b	#mds_note_start,@cmd
+	bcc.s	@cmd_note						; 82-df - note
 	addq.b	#1,@cmd
-	beq.s	@cmd_tie						;81 - tie
+	beq.s	@cmd_tie						; 81 - tie
 	move.b	t_rest_time(twork),t_counter(twork)
-	bra.s	@cmd_rest2						;80 - rest (alternate)
+	bra.s	@cmd_rest2						; 80 - rest (alternate)
 
+;--------------------------------------
+; handle note ($82..$df)
+;--------------------------------------
 @cmd_note
 	move.b	@cmd,t_note(twork)
 	bset	#nf+nf_key_on,flag
 	btst	#nf+nf_slur,flag
 	bne.s	@cmd_tie
 	bset	#nf+nf_key_off,flag
-	btst	#cf+cf_drum_mode,flag			;drum mode on?
+	btst	#cf+cf_drum_mode,flag
 	bne.s	@cmd_drum_mode
 
+;--------------------------------------
+; read note length ($00..$7f) or use previous length ($80..$ff)
+; drum mode subroutine returns here
+;--------------------------------------
 @cmd_tie
-	move.b	0(@tbase,@trackpos),@cmd		;read next command
-	bmi.s	@cmd_previous_delta
+	move.b	0(@tbase,@trackpos),@cmd		; read next command
+	bmi.s	@cmd_previous_length
 
-@cmd_new_delta
-	move.b	@cmd,t_counter(twork)
+@cmd_new_length
+	move.b	@cmd,t_counter(twork)			; read new note length
 	move.b	@cmd,t_note_time(twork)
 	addq.w	#1,@trackpos
 	move.w	@trackpos,t_position(twork)
 	move.b	@sp,t_stack_pos(twork)
 	bra.w	mds_update_seq_return
 
-@cmd_previous_delta
+@cmd_previous_length						; use length of prev. note
 	move.b	t_note_time(twork),t_counter(twork)
 	move.w	@trackpos,t_position(twork)
 	move.b	@sp,t_stack_pos(twork)
 	bra.w	mds_update_seq_return
 
+;--------------------------------------
+; handle commands ($e0..$ff)
+;--------------------------------------
 @cmd_other
 	andi.w	#$1f,@cmd
 	moveq	#0,@cmdlen
@@ -682,6 +699,9 @@ mds_update_seq
 	add.b	@cmd,@cmd
 	jmp		@cmd_table(pc,@cmd)
 
+;--------------------------------------
+; jump to drum mode subroutine
+;--------------------------------------
 @cmd_drum_mode
 	andi.w	#$00ff,@cmd
 	move.w	@trackpos,t_stack(twork,@sp)		; push current pos
@@ -690,6 +710,7 @@ mds_update_seq
 	move.w	0(@tbase,@cmd),@trackpos
 	moveq	#1,@cmdlen
 	bra.w	@next_command
+
 
 ;----------------------------------------------------------------------
 ; command table
