@@ -40,33 +40,33 @@ version_str_end
 mds_init
 @ver		equr d0
 @zero		equr d0
-	cmpi.l	#$10011f00,(a1)+				;compare magic value
+	cmpi.l	#$10011f00,(a1)+				; compare magic value
 	bne.w	mds_init_error
 
 	move.l	(a1)+,@ver
-	move.l	a1,w_sdtop(a0)					;set sdtop
+	move.l	a1,w_sdtop(a0)					; set sdtop
 	swap	@ver
 
-	cmpi.w	#MDSDRV_VER,@ver				;compare version
+	cmpi.w	#MDSDRV_VER,@ver				; compare version
 	bne.w	mds_init_error
 
 	clr.l	@zero
-	move.l	@zero,w_request(a0)				;clear request
+	move.l	@zero,w_request(a0)				; clear request
 	move.l	@zero,2+w_request(a0)
-	move.l	@zero,w_tempo(a0)				;clear tempo
+	move.l	@zero,w_tempo(a0)				; clear tempo
 	move.l	@zero,2+w_tempo(a0)
-	move.l	@zero,w_counter(a0)				;clear counter
+	move.l	@zero,w_counter(a0)				; clear counter
 	move.l	@zero,2+w_counter(a0)
-	move.l	@zero,w_seq_step(a0)			;clear seq step
+	move.l	@zero,w_seq_step(a0)			; clear seq step
 	move.l	@zero,2+w_seq_step(a0)
-	move.l	@zero,w_volume(a0)				;clear trk volume
+	move.l	@zero,w_volume(a0)				; clear trk volume
 	move.l	@zero,2+w_volume(a0)
-	move.l	@zero,w_tmask(a0)				;clear trk mask
+	move.l	@zero,w_tmask(a0)				; clear trk mask
 	move.l	@zero,2+w_tmask(a0)
-	move.l	@zero,w_chmask(a0)				;clear chmask
+	move.l	@zero,w_chmask(a0)				; clear chmask
 	move.l	@zero,2+w_chmask(a0)
-	move.w	@zero,w_pcm_enable(a0)			;clear pcm
-	move.w	@zero,w_fm3_mask(a0)			;clear fm3mask
+	move.w	@zero,w_pcm_enable(a0)			; clear pcm
+	move.w	@zero,w_fm3_mask(a0)			; clear fm3mask
 	move.l	@zero,w_fm3_tl(a0)
 
 	move.w	#128,d1							; NTSC tempo
@@ -74,18 +74,18 @@ mds_init
 	beq.s	@set_tempo
 	move.w	#107,d1							; PAL tempo
 @set_tempo
-	move.w	d1,w_gtempo(a0)					;set global tempo
+	move.w	d1,w_gtempo(a0)					; set global tempo
 
-	lea		w_track(a0),a1					;track addr
+	lea		w_track(a0),a1					; track addr
 	move.w	#TCOUNT-1,d1
 @next_track
-	move.w	@zero,t_note_flag(a1)			;clear flag
+	move.w	@zero,t_note_flag(a1)			; clear flag
 	move.w	@zero,t_peg_addr(a1)
 	move.w	#$fff8,t_psg_eg_addr(a1)
 	move.w	#$ff0f,t_psg_eg_pos(a1)
-	move.b	#RCOUNT<<1,t_request_id(a1)		;channel is free
+	move.b	#RCOUNT<<1,t_request_id(a1)		; channel is free
 
-	lea		TSIZE(twork),twork				;next track
+	lea		TSIZE(twork),twork				; next track
 	dbra	d1,@next_track
 
 	stop_z80
@@ -94,7 +94,7 @@ mds_init
 mds_halt
 	block_z80
 	lea		sound_psg,a1
-	move.b	#$9f,(a1)						;mute psg
+	move.b	#$9f,(a1)						; mute psg
 	move.b	#$bf,(a1)
 	move.b	#$df,(a1)
 	move.b	#$ff,(a1)
@@ -139,7 +139,7 @@ mds_request
 ; TRASHES
 ;	a0,a1,d0,d1
 mds_command
-	cmpi.b	#@cmd_max,d0						; max command
+	cmpi.b	#@cmd_max,d0					; max command
 	bcc.s	@cmd_dummy
 	lsl.w	#2,d0
 	jmp		@cmd_table(pc,d0)
@@ -268,7 +268,7 @@ mds_handle_request_return		equ *
 
 	move.w	w_tmask(work,rnum),@reqdata
 	beq.s	@request_done
-	move.w	w_counter(work,rnum),@counter	;apply tempo
+	move.w	w_counter(work,rnum),@counter	; apply tempo
 	add.w	w_tempo(work,rnum),@counter
 	addq.w	#1,@counter
 
@@ -276,7 +276,7 @@ mds_handle_request_return		equ *
 	clr.w	@seq_step
 
 @sequence_tick
-	cmp.w	@gtempo,@counter				;sequence tick
+	cmp.w	@gtempo,@counter				; sequence tick
 	bcs.s	@tick_done
 	sub.w	@gtempo,@counter
 	addq.w	#1,@seq_step
@@ -371,22 +371,22 @@ mds_update_return				equ *
 	endm
 
 @ch_update_table
-	@ch_mapping		#0,mds_fm0_update		;0
-	@ch_mapping		#1,mds_fm0_update		;1
-	@ch_mapping		#2,mds_fm0_update		;2
-	@ch_mapping		#4,mds_fm1_update		;3
-	@ch_mapping		#5,mds_fm1_update		;4
-	@ch_mapping		#6,mds_fm6_update		;5
-	@ch_mapping		#-128,mds_psg_update	;6
-	@ch_mapping		#-96,mds_psg_update		;7
-	@ch_mapping		#-64,mds_psg3_update	;8
-	@ch_mapping		#-32,mds_psgn_update	;9
-	@ch_mapping		#10,mds_dummy_update	;a
-	@ch_mapping		#11,mds_dummy_update	;b
-	@ch_mapping		#12,mds_dummy_update	;c
-	@ch_mapping		#13,mds_dummy_update	;d
-	@ch_mapping		#14,mds_dummy_update	;e
-	@ch_mapping		#15,mds_dummy_update	;f
+	@ch_mapping		#0,mds_fm0_update		; 0
+	@ch_mapping		#1,mds_fm0_update		; 1
+	@ch_mapping		#2,mds_fm0_update		; 2
+	@ch_mapping		#4,mds_fm1_update		; 3
+	@ch_mapping		#5,mds_fm1_update		; 4
+	@ch_mapping		#6,mds_fm6_update		; 5
+	@ch_mapping		#-128,mds_psg_update	; 6
+	@ch_mapping		#-96,mds_psg_update		; 7
+	@ch_mapping		#-64,mds_psg3_update	; 8
+	@ch_mapping		#-32,mds_psgn_update	; 9
+	@ch_mapping		#10,mds_dummy_update	; a
+	@ch_mapping		#11,mds_dummy_update	; b
+	@ch_mapping		#12,mds_dummy_update	; c
+	@ch_mapping		#13,mds_dummy_update	; d
+	@ch_mapping		#14,mds_dummy_update	; e
+	@ch_mapping		#15,mds_dummy_update	; f
 
 ;======================================================================
 ; starts or stops song playback
@@ -404,55 +404,55 @@ mds_update_return				equ *
 mds_handle_request
 @tbase		equr	tmpa1
 @reqdata	equr	d0
-@tempo		equr	d1						;global tempo
+@tempo		equr	d1						; global tempo
 @zero		equr	d1
 @tempreg	equr	d2
 @tcount		equr	d3
 @tmask		equr	d3
 
-	st.b	w_priority(work)				;set priority flag
+	st.b	w_priority(work)				; set priority flag
 
 	bclr	#rf_stop,@reqdata
-	bne.w	@stop_song						;stop already playing song
+	bne.w	@stop_song						; stop already playing song
 
 ;----------------------------------------------------------------------
 ; request song
 ;----------------------------------------------------------------------
 	bclr	#rf_active,@reqdata
-	move.w	@reqdata,w_request(work,rnum)	;store request flag
-	beq.w	mds_handle_request_return		;0 will do nothing
+	move.w	@reqdata,w_request(work,rnum)	; store request flag
+	beq.w	mds_handle_request_return		; 0 will do nothing
 
 ;----------------------------------------------------------------------
 ; start song playback
 ;----------------------------------------------------------------------
 
-	move.l	a_sdtop,@zero					;check that sdtop is valid
+	move.l	a_sdtop,@zero					; check that sdtop is valid
 	beq.w	mds_handle_request_return
 	exg		@zero,tmpa0
 
-	cmp.w	-2(a_sdtop),@reqdata			;check if out of bounds
+	cmp.w	-2(a_sdtop),@reqdata			; check if out of bounds
 	bhi.w	mds_handle_request_return
 
 	move.w	w_gtempo(work),@tempo
 	subq.w	#1,@tempo
-	move.w	@tempo,w_tempo(work,rnum)		;initial tempo
+	move.w	@tempo,w_tempo(work,rnum)		; initial tempo
 
 	clr.w	@zero
 	move.w	@zero,w_counter(work,rnum)
 	move.w	@zero,w_seq_step(work,rnum)
 	move.w	@zero,w_tmask(work,rnum)
 
-	lsl.w	#2,@reqdata						;request table
-	adda.l	0(a_sdtop,@reqdata),tmpa0		;location of song header
+	lsl.w	#2,@reqdata						; request table
+	adda.l	0(a_sdtop,@reqdata),tmpa0		; location of song header
 
 	move.l	tmpa0,@tbase
-	adda.w	(tmpa0)+,@tbase					;song base offset
+	adda.w	(tmpa0)+,@tbase					; song base offset
 
 	clr.w	@tcount
-	move.b	(tmpa0)+,@tcount				;song volume
+	move.b	(tmpa0)+,@tcount				; song volume
 	move.w	@tcount,w_volume(work,rnum)
 
-	move.b	(tmpa0)+,@tcount				;track count
+	move.b	(tmpa0)+,@tcount				; track count
 	subq.b	#1,@tcount
 	bcs.w	mds_handle_request_return
 
@@ -467,7 +467,7 @@ mds_handle_request
 	andi.w	#($100<<nf_enabled)|($01<<cf_suspend),@tempreg
 	beq.s	@use_track
 
-	lea		TSIZE(twork),twork				;track is already in use
+	lea		TSIZE(twork),twork				; track is already in use
 	dbra	tnum,@next_track
 	bra.w	mds_handle_request_return
 
@@ -477,36 +477,36 @@ mds_handle_request
 @use_track
 	move.l	@tbase,t_base_addr(twork)
 
-	move.b	(tmpa0)+,@reqdata				;channel id
+	move.b	(tmpa0)+,@reqdata				; channel id
 	move.b	#nm_init,t_note_flag(twork)
 	move.b	(tmpa0)+,t_channel_flag(twork)
 	lsl.w	#8,@reqdata
 	or.w	rnum,@reqdata
 	move.w	@reqdata,t_channel_id(twork)
 
-	move.w	@zero,@tempreg					;allocate track
+	move.w	@zero,@tempreg					; allocate track
 	bset	tnum,@tempreg
 	or.w	@tempreg,w_tmask(work,rnum)
 
-	move.w	@zero,@tempreg					;allocate channel
+	move.w	@zero,@tempreg					; allocate channel
 	bset	@reqdata,@tempreg
 	or.w	@tempreg,w_chmask(work,rnum)
 
 ;--------------------------------------
 ; initialize track memory
 ;--------------------------------------
-	st		t_last_pitch(twork)				;previous pitch
-	move.w	#$0030,t_ins(twork)				;ins/ins transpose
-	move.w	@zero,t_note(twork)				;note/transpose
-	move.w	@zero,t_trs(twork)				;transpose/portamento
-	move.w	#$8f00,t_vol(twork)				;vol/mtab repeat
-	move.w	@zero,t_mtab_addr(twork)		;mtab position
+	st		t_last_pitch(twork)				; previous pitch
+	move.w	#$0030,t_ins(twork)				; ins/ins transpose
+	move.w	@zero,t_note(twork)				; note/transpose
+	move.w	@zero,t_trs(twork)				; transpose/portamento
+	move.w	#$8f00,t_vol(twork)				; vol/mtab repeat
+	move.w	@zero,t_mtab_addr(twork)		; mtab position
 
-	move.w	@zero,t_peg_addr(twork)			;pitch e.g.
-	move.w	@zero,t_peg_mod(twork)			;pitch e.g.
-	move.w	(tmpa0)+,t_position(twork)		;start position
-	move.w	@zero,t_stack_pos(twork)		;stack_pos & counter
-	move.w	#$0b0b,t_rest_time(twork)		;default time (-1)
+	move.w	@zero,t_peg_addr(twork)			; pitch e.g.
+	move.w	@zero,t_peg_mod(twork)			; pitch e.g.
+	move.w	(tmpa0)+,t_position(twork)		; start position
+	move.w	@zero,t_stack_pos(twork)		; stack_pos & counter
+	move.w	#$0b0b,t_rest_time(twork)		; default time (-1)
 	move.b	@zero,t_stack_pos(twork)
 
 	cmp.w	#ct_psg<<8,@reqdata
@@ -515,8 +515,8 @@ mds_handle_request
 ;--------------------------------------
 ; psg initialize
 ;--------------------------------------
-	move.w	@zero,t_psg_nreset(twork)		;noise mode initialize
-	move.w	#$fff8,t_psg_eg_addr(twork)		;psg eg initialize
+	move.w	@zero,t_psg_nreset(twork)		; noise mode initialize
+	move.w	#$fff8,t_psg_eg_addr(twork)		; psg eg initialize
 	move.w	#$ff0f,t_psg_eg_pos(twork)
 	bra.s	@not_fm
 
@@ -524,7 +524,7 @@ mds_handle_request
 ; fm initialize
 ;--------------------------------------
 @not_psg
-	move.b	#$c0,t_fm_pan_lfo(twork)		;initial panning
+	move.b	#$c0,t_fm_pan_lfo(twork)		; initial panning
 
 @not_fm
 	lea		TSIZE(twork),twork
@@ -536,30 +536,30 @@ mds_handle_request
 ; stop song playback
 ;----------------------------------------------------------------------
 @stop_song
-	move.w	@reqdata,w_request(work,rnum)	;store request flag
+	move.w	@reqdata,w_request(work,rnum)	; store request flag
 	lea		w_track(work),twork
 	move.w	#TCOUNT-1,tnum
 	move.w	w_tmask(work,rnum),@tmask
 
 @stop_next_track
-	btst	tnum,@tmask						;track id
+	btst	tnum,@tmask						; track id
 	beq.w	@stop_skip_track
 	bset.b	#cf_stop,t_channel_flag(twork)
 	bclr.b	#cf_suspend,t_channel_flag(twork)
-	move.b	#RCOUNT<<1,t_request_id(twork)	;track is free
+	move.b	#RCOUNT<<1,t_request_id(twork)	; track is free
 
 @stop_skip_track
-	lea		TSIZE(twork),twork				;next track
+	lea		TSIZE(twork),twork				; next track
 	dbra	tnum,@stop_next_track
-	clr.w	w_tmask(work,rnum)				;clear trackmask
-	clr.w	w_chmask(work,rnum)				;clear chmask
+	clr.w	w_tmask(work,rnum)				; clear trackmask
+	clr.w	w_chmask(work,rnum)				; clear chmask
 	bra.w	mds_handle_request_return
 
 ;======================================================================
 ; update track priorities
 ;----------------------------------------------------------------------
 mds_update_priority
-	clr.b	w_priority(work)				;clear priority flag
+	clr.b	w_priority(work)				; clear priority flag
 	lea		w_track(work),twork				; first track's addr
 	move.w	#TCOUNT-1,tnum
 @next_voice
@@ -569,14 +569,14 @@ mds_update_priority
 	bmi.s	@voice_not_enabled
 @suspended
 	lea		w_chmask(work),tmpa0			; channel mask
-	move.b	t_channel_id(twork),chnid		;check priority
+	move.b	t_channel_id(twork),chnid		; check priority
 	move.b	t_request_id(twork),d0
 	rept	RCOUNT-1
 		beq.s	@has_priority
 		move.w	(tmpa0)+,d1
 		btst	chnid,d1
 		bne.s	@no_priority
-		subq.b	#2,d0						;next request
+		subq.b	#2,d0						; next request
 	endr
 @has_priority
 	bclr	#cf_background,t_channel_flag(twork)
@@ -646,9 +646,9 @@ mds_update_seq
 ;--------------------------------------
 @cmd_80
 	cmp.b	#mds_chn_cmd_base,@cmd
-	bcc.s	@cmd_other						; e0-ff - command
+	bcc.s	@cmd_other						; e0..ff - command
 	subi.b	#mds_note_start,@cmd
-	bcc.s	@cmd_note						; 82-df - note
+	bcc.s	@cmd_note						; 82..df - note
 	addq.b	#1,@cmd
 	beq.s	@cmd_tie						; 81 - tie
 	move.b	t_rest_time(twork),t_counter(twork)
@@ -983,7 +983,7 @@ mds_update_seq
 @cmd_fmreg
 	mds_z80_wait_fm
 	move.b	0(@tbase,@trackpos),$4000(zram)
-	move.b	1(@tbase,@trackpos),$4001(zram)				;24
+	move.b	1(@tbase,@trackpos),$4001(zram)	; 24
 	mds_z80_start
 	bra.w	@next_command
 
@@ -1060,13 +1060,13 @@ mds_update_seq
 @cmd_lpbl
 	cmpi.b	#1,t_stack-4(twork,@sp)
 	bne.w	@next_command
-	subq.b	#4,@sp								; fall-through...
+	subq.b	#4,@sp							; fall-through...
 
 ;----------------------------------------------------------------------
 ; jump - jump to offset
 ;----------------------------------------------------------------------
 @cmd_jump
-	move.b	0(@tbase,@trackpos),@tempreg		; read 16-bit param
+	move.b	0(@tbase,@trackpos),@tempreg	; read 16-bit param
 	lsl.w	#8,@tempreg
 	move.b	1(@tbase,@trackpos),@tempreg
 	add.w	@tempreg,@cmdlen
@@ -1080,7 +1080,7 @@ mds_update_seq
 	move.w	@trackpos,t_stack(twork,@sp)
 	addq.b	#2,@sp
 	clr.w	@cmd
-	move.b	-2(@tbase,@trackpos),@cmd			; get subroutine pos
+	move.b	-2(@tbase,@trackpos),@cmd		; get subroutine pos
 	add.w	@cmd,@cmd
 	move.w	0(@tbase,@cmd),@trackpos
 	bra.w	@next_command
@@ -1091,7 +1091,7 @@ mds_update_seq
 @cmd_dmfinish
 	move.b	0(@tbase,@trackpos),t_note(twork)
 	subq.b	#2,@sp
-	move.w	t_stack(twork,@sp),@trackpos		; pop return address
+	move.w	t_stack(twork,@sp),@trackpos	; pop return address
 	bra.w	@cmd_tie
 
 ;----------------------------------------------------------------------
@@ -1102,7 +1102,7 @@ mds_update_seq
 @cmd_pcm
 	move.b	0(@tbase,@trackpos),@cmd
 	lsl.w	@cmd
-	move.b	1(@tbase,@cmd),t_ins(twork)			; instr address
+	move.b	1(@tbase,@cmd),t_ins(twork)		; instr address
 	bset	#cf+cf_pcm_control,flag
 	bra.w	@next_command
 
@@ -1241,9 +1241,9 @@ mds_pitch_update
 	clr.b	d1
 	add.w	t_trs(twork),d1
 	clr.b	d1
-	move.b	t_dtn(twork),d0							; signed value
+	move.b	t_dtn(twork),d0					; signed value
 	ext.w	d0
-	add.w	d1,d0									; d0=porta_target
+	add.w	d1,d0							; d0=porta_target
 
 ;----------------------------------------------------------------------
 ; portamento update
@@ -1253,10 +1253,10 @@ mds_pitch_update
 	beq.s	@porta_done
 
 	move.w	d0,d2
-	sub.w	t_pitch(twork),d2						;d2=porta_delta
+	sub.w	t_pitch(twork),d2				;d2=porta_delta
 	beq.s	@porta_done
 
-	move.w	d2,d1									;get step
+	move.w	d2,d1							;get step
 	asr.w	#8,d1
 	bpl.s	@add_step
 	subq.w	#2,d1
@@ -1265,7 +1265,7 @@ mds_pitch_update
 
 	muls	d3,d1
 	asr.w	#1,d1
-	add.w	t_pitch(twork),d1						;d1=new_pitch
+	add.w	t_pitch(twork),d1				;d1=new_pitch
 
 	move.w	d0,d3
 	sub.w	d1,d3
@@ -1293,39 +1293,39 @@ mds_pitch_update
 	move.b	t_peg_pos(twork),d1
 	add.w	d1,d1
 	add.w	d1,d1
-	move.w	t_peg_mod(twork),d2						;d2=modulator
+	move.w	t_peg_mod(twork),d2				; d2=modulator
 
 	move.b	t_peg_delay(twork),d3
 	bne.s	@no_reset
-	move.w	0(tmpa1,d1),d2							;d2=init modulator
+	move.w	0(tmpa1,d1),d2					; d2=init modulator
 
 @no_reset
 	move.b	2(tmpa1,d1),d4
 	ext.w	d4
-	add.w	d2,d4									;add delta
+	add.w	d2,d4							; add delta
 	move.w	d4,t_peg_mod(twork)
 	add.w	d4,d0
 
-	cmp.b	3(tmpa1,d1),d3							;delay done?
+	cmp.b	3(tmpa1,d1),d3					; delay done?
 	bne.s	@delay_not_done
 
-	move.w	4(tmpa1,d1),d2							;next command
+	move.w	4(tmpa1,d1),d2					; next command
 	subi.w	#$7f00,d2
 	blt.s	@no_jump
 
-	move.w	d2,t_peg_delay(twork)					;jump to position
+	move.w	d2,t_peg_delay(twork)			; jump to position
 @no_peg
 	rts
 
 @no_jump
 	lsr.w	#2,d1
 	addq.b	#1,d1
-	move.w	d1,t_peg_delay(twork)					;next position
+	move.w	d1,t_peg_delay(twork)			; next position
 	rts
 
 @delay_not_done
-	addq.b	#2,d3									;increase delay
-	beq.s	@no_peg									; ff = endless
+	addq.b	#2,d3							; increase delay
+	beq.s	@no_peg							; ff = endless
 	subq.b	#1,d3
 	move.b	d3,t_peg_delay(twork)
 	rts
@@ -1343,22 +1343,22 @@ mds_fm3_update_pitch
 	mds_z80_wait_fm
 	btst	#3,d4
 	bne.s	@skip_op1
-	move.b	#$ad,d1								;op1 = a9/ad
+	move.b	#$ad,d1							; op1 = a9/ad
 	bsr.s	@write_one
 @skip_op1
 	btst	#3+1,d4
 	bne.s	@skip_op2
-	move.b	#$ae,d1								;op2 = aa/ae
+	move.b	#$ae,d1							; op2 = aa/ae
 	bsr.s	@write_one
 @skip_op2
 	btst	#3+2,d4
 	bne.s	@skip_op3
-	move.b	#$ac,d1								;op3 = a8/ac
+	move.b	#$ac,d1							; op3 = a8/ac
 	bsr.s	@write_one
 @skip_op3
 	btst	#3+3,d4
 	bne.s	@skip_op4
-	move.b	#$a6,d1								;op4 = a2/a6
+	move.b	#$a6,d1							; op4 = a2/a6
 	bsr.s	@write_one
 @skip_op4
 	mds_z80_start
@@ -1368,17 +1368,17 @@ mds_fm3_update_pitch
 	move.b	d1,$4000(zram)
 	nop
 	nop
-	move.b	d0,$4001(zram)						; 8+12 : 20
-	ror.w	#8,d0								; 22  :  22
-	subq.b	#4,d1								;  4  :  28
+	move.b	d0,$4001(zram)					;8+12 : 20
+	ror.w	#8,d0							; 22  :  22
+	subq.b	#4,d1							;  4  :  28
 	nop
 	nop
-	nop											; 4+4+4: 40
-	move.b	d1,$4000(zram)						; 14  :  54
+	nop										;4+4+4: 40
+	move.b	d1,$4000(zram)					; 14  :  54
 	nop
 	nop
-	move.b	d0,$4001(zram)						; 8+12 : 20
-	ror.w	#8,d0								; 22  :  22
+	move.b	d0,$4001(zram)					;8+12 : 20
+	ror.w	#8,d0							; 22  :  22
 	rts
 
 ;======================================================================
@@ -1403,46 +1403,46 @@ mds_fm_update_ins
 ; optimization: rather than checking the busy flag we could just wait
 ; the mandated number of cycles between writes = 83 according to YM2608
 ; manual
-	move.b	#$40,d0								;tl=max
+	move.b	#$40,d0							;tl=max
 	add.b	d1,d0
-	moveq	#3,d2								;op count
+	moveq	#3,d2							;op count
 	bra.s	@notbusy
-@nextop											; burn 83-14 = 69
-	bsr.s	@burn56								;     56 : 56
+@nextop										; burn 83-14 = 69
+	bsr.s	@burn56							;     56 : 56
 @notbusy:
-	move.b	d0,0(zram,chnid)					;     14 : 70
-	move.b	#$7f,1(zram,chnid)					;        : 18
-	addq.b	#4,d0								;  10/14 : 18 (14)
-	dbra	d2,@nextop							;  10/14 : 32
+	move.b	d0,0(zram,chnid)				;     14 : 70
+	move.b	#$7f,1(zram,chnid)				;        : 18
+	addq.b	#4,d0							;  10/14 : 18 (14)
+	dbra	d2,@nextop						;  10/14 : 32
 
 ;----------------------------------------------------------------------
 ; load inst data
 ;----------------------------------------------------------------------
-	lea		@op_reg_table(pc),tmpa0				;      8
-	moveq	#5,d3								;      4
+	lea		@op_reg_table(pc),tmpa0			;      8
+	moveq	#5,d3							;      4
 
 @nextreg
-	move.b	(tmpa0)+,d0							;      8
-	add.b	d1,d0								;      4
-	moveq	#3,d2								;      4
-@nextop2										; burn 83-14 = 69
-	bsr.s	@burn56								;     56 : 56
-	move.b	d0,0(zram,chnid)					;     14 : 70
-	move.b	(tmpa1)+,1(zram,chnid)				;       : 18
-	addq.b	#4,d0								;      4 :  4
-	dbra	d2,@nextop2							;  10/14 : 18 (14)
-	dbra	d3,@nextreg							;  10/14 : 32
+	move.b	(tmpa0)+,d0						;      8
+	add.b	d1,d0							;      4
+	moveq	#3,d2							;      4
+@nextop2									; burn 83-14 = 69
+	bsr.s	@burn56							;     56 : 56
+	move.b	d0,0(zram,chnid)				;     14 : 70
+	move.b	(tmpa1)+,1(zram,chnid)			;        : 18
+	addq.b	#4,d0							;      4 :  4
+	dbra	d2,@nextop2						;  10/14 : 18 (14)
+	dbra	d3,@nextreg						;  10/14 : 32
 
 ;----------------------------------------------------------------------
 ; load feedback/algorithm
 ;----------------------------------------------------------------------
-												; burn 83-32 = 51
-	addq.w	#4,tmpa1							;      8 :  8
-	move.b	#$b0,d0								;      8 : 16
-	add.b	d1,d0								;      4 : 20
-	cmp.b	sound_fm_a0,d0						;12+4=16 : 36
-	move.b	d0,0(zram,chnid)					;     14 : 52
-	move.b	(tmpa1)+,1(zram,chnid)				;        : 18
+											; burn 83-32 = 51
+	addq.w	#4,tmpa1						;      8 :  8
+	move.b	#$b0,d0							;      8 : 16
+	add.b	d1,d0							;      4 : 20
+	cmp.b	sound_fm_a0,d0					;12+4=16 : 36
+	move.b	d0,0(zram,chnid)				;     14 : 52
+	move.b	(tmpa1)+,1(zram,chnid)			;        : 18
 	swap	chnid
 	rts
 
@@ -1455,11 +1455,11 @@ mds_fm_update_ins
 ;----------------------------------------------------------------------
 ; burn cycles while FM chip is busy
 ;----------------------------------------------------------------------
-@burn56											; bsr=18 : 18
-	ror.w	#1,d0								;  6+4=8 : 26
-	rol.w	#1,d0                               ;  6+4=8 : 34
-	cmp.l	d0,d0								;      6 : 40
-	rts											;     16 : 56
+@burn56										; bsr=18 : 18
+	ror.w	#1,d0							;  6+4=8 : 26
+	rol.w	#1,d0							;  6+4=8 : 34
+	cmp.l	d0,d0							;      6 : 40
+	rts										;     16 : 56
 
 ;======================================================================
 ; FM volume update
@@ -1492,24 +1492,24 @@ mds_fm_update_vol
 	and.b	d2,d1
 	add.b	#$4c,d1
 	swap	chnid
-@nextop											; burn 83-14 = 69
-	move.b	-(tmpa1),d0							;      10 : 10
-	cmp.b	mds_fm_op_table(pc,d4),d2			; 10+4=14 : 24
-	bcs.s	@modulator							;    10/8 : 32
-	add.b	d3,d0								;       4 : 36
-	bpl.b	@no_overflow						;    10/8 : 44
-	move.b	#$7f,d0								;       8 : 52
-	bra.s	@write_vol							;      10 : 62
-@modulator										;           34
-	cmp.b	*(pc),d0							;  8+4=12 : 46
-@no_overflow									;           46
-	cmp.b	*(pc),d0							;  8+4=12 : 58
-@write_vol										;           58 to 62
-	move.b	d1,0(zram,chnid)					;      14 : 72-76
-	nop											;       4 :  4
-	move.b	d0,1(zram,chnid)					;      14 : 18
-	subq.b	#4,d1								;       4 :  4
-	dbra	d2,@nextop							;   10/14 : 18 (14)
+@nextop										; burn 83-14 = 69
+	move.b	-(tmpa1),d0						;      10 : 10
+	cmp.b	mds_fm_op_table(pc,d4),d2		; 10+4=14 : 24
+	bcs.s	@modulator						;    10/8 : 32
+	add.b	d3,d0							;       4 : 36
+	bpl.b	@no_overflow					;    10/8 : 44
+	move.b	#$7f,d0							;       8 : 52
+	bra.s	@write_vol						;      10 : 62
+@modulator									;           34
+	cmp.b	*(pc),d0						;  8+4=12 : 46
+@no_overflow								;           46
+	cmp.b	*(pc),d0						;  8+4=12 : 58
+@write_vol									;           58 to 62
+	move.b	d1,0(zram,chnid)				;      14 : 72-76
+	nop										;       4 :  4
+	move.b	d0,1(zram,chnid)				;      14 : 18
+	subq.b	#4,d1							;       4 :  4
+	dbra	d2,@nextop						;   10/14 : 18 (14)
 	swap	chnid
 	rts
 
@@ -1543,25 +1543,25 @@ mds_fm3_update_vol
 ;	move.b	t_op_mask(twork),d4
 	moveq	#3,d2
 
-	move.b	-(tmpa1),d0							; op4
+	move.b	-(tmpa1),d0						; op4
 	btst	#3+3,d4
 	bne.s	@skip_op4
 	bsr.s	@write_op
 @skip_op4
 	subq.b	#1,d2
-	move.b	-(tmpa1),d0							; op2
+	move.b	-(tmpa1),d0						; op2
 	btst	#3+1,d4
 	bne.s	@skip_op2
 	bsr.s	@write_op
 @skip_op2
 	subq.b	#1,d2
-	move.b	-(tmpa1),d0							; op3
+	move.b	-(tmpa1),d0						; op3
 	btst	#3+2,d4
 	bne.s	@skip_op3
 	bsr.s	@write_op
 @skip_op3
 	subq.b	#1,d2
-	move.b	-(tmpa1),d0							; op1
+	move.b	-(tmpa1),d0						; op1
 	btst	#3+0,d4
 	bne.s	@skip_op1
 @write_op
@@ -1589,28 +1589,28 @@ mds_fm3_update_vol
 ;----------------------------------------------------------------------
 ; Assumes z80 is stopped and reg $28 is latched
 mds_fm_cutoff
-	move.b	chnid,$4001(zram)					;12 cycles + 2 nop
+	move.b	chnid,$4001(zram)				; 12 cycles + 2 nop
 
 mds_fm3_cutoff
 	move.w	chnid,d1
 	andi.b	#$03,d1
 	swap	chnid
 
-	move.b	#$80,d0								;rr=max
+	move.b	#$80,d0							; rr=max
 	add.b	d1,d0
-	moveq	#3,d2								;op count
+	moveq	#3,d2							; op count
 	bra.s	@notbusy
 
-@nextop											; burn 83-14 = 69
-	ror.l	#8,d0								; 16+8=24 : 24
-	rol.l	#6,d0                               ; 12+8=20 : 44
-	rol.l	#2,d0								;  4+8=12 : 56
+@nextop										; burn 83-14 = 69
+	ror.l	#8,d0							; 16+8=24 : 24
+	rol.l	#6,d0							; 12+8=20 : 44
+	rol.l	#2,d0							;  4+8=12 : 56
 
 @notbusy:
-	move.b	d0,0(zram,chnid)					;     14 : 70
-	move.b	#$ff,1(zram,chnid)					;        : 18
-	addq.b	#4,d0								;  10/14 : 18 (14)
-	dbra	d2,@nextop							;  10/14 : 32
+	move.b	d0,0(zram,chnid)				;     14 : 70
+	move.b	#$ff,1(zram,chnid)				;        : 18
+	addq.b	#4,d0							;  10/14 : 18 (14)
+	dbra	d2,@nextop						;  10/14 : 32
 	swap	chnid
 
 	mds_z80_start
@@ -1629,14 +1629,14 @@ mds_fm6_update
 	tst.b	w_pcm_enable(work)
 	beq.s	mds_fm1_update
 
-	clr.b	w_pcm_enable(work)			; send key off if we just
-	mds_z80_cmd0	#zc_pcm1_stop		; switched from PCM to FM
+	clr.b	w_pcm_enable(work)				; send key off if we just
+	mds_z80_cmd0	#zc_pcm1_stop			; switched from PCM to FM
 
 mds_fm1_update
-	bset	#17,chnid								; $4002
+	bset	#17,chnid						; $4002
 mds_fm0_update
 @fm			equr	tmpa0
-	bset	#30,chnid								; $4000
+	bset	#30,chnid						; $4000
 ;----------------------------------------------------------------------
 ; key_off update
 ;----------------------------------------------------------------------
@@ -1684,9 +1684,9 @@ mds_fm0_update
 ; key_off (normal mode)
 ;----------------------------------------------------------------------
 @normal_key_off
-	tst.l	flag								; enable flag cleared?
+	tst.l	flag							; enable flag cleared?
 	bpl.w	mds_fm_cutoff
-	move.b	chnid,$4001(zram)						;12 cycles + 2 nop
+	move.b	chnid,$4001(zram)				; 12 cycles + 2 nop
 
 @no_key_off
 ;----------------------------------------------------------------------
@@ -1701,7 +1701,7 @@ mds_fm0_update
 	lsl.w	d0
 	move.l	t_base_addr(twork),tmpa1
 	movea.w	0(tmpa1,d0),tmpa1
-	adda.l	a_sdtop,tmpa1						; ptr. to ins data
+	adda.l	a_sdtop,tmpa1					; ptr. to ins data
 	bsr.w	mds_fm_update_ins
 ;----------------------------------------------------------------------
 ; TODO: macro table update (after setting instrument)
@@ -1740,10 +1740,10 @@ mds_fm0_update
 ; calculation on Z80
 
 ;	move.w	d0,t_last_pitch(twork)
-;	move.b	chnid,d1							; multiply by 3
+;	move.b	chnid,d1						; multiply by 3
 ;	add.b	d1,chnid
 ;	add.b	d1,chnid
-;	mds_z80_cmd2	d1,d0						; pitch update
+;	mds_z80_cmd2	d1,d0					; pitch update
 
 	move.b	t_op_mask(twork),d4
 	bpl.s	@no_fm3_pitch
@@ -1761,13 +1761,13 @@ mds_fm0_update
 	mds_z80_wait_fm
 	move.b	d1,0(zram,chnid)
 	nop
-	move.b	d0,1(zram,chnid)					; 4+14 : 18
-	ror.w	#8,d0								; 22  :  22
-	subq.b	#4,d1								;  4  :  28
-	move.w	d3,t_last_pitch(twork)				; 12  :  40
-	move.b	d1,0(zram,chnid)					; 14  :  54
+	move.b	d0,1(zram,chnid)				; 4+14 : 18
+	ror.w	#8,d0							; 22  :  22
+	subq.b	#4,d1							;  4  :  28
+	move.w	d3,t_last_pitch(twork)			; 12  :  40
+	move.b	d1,0(zram,chnid)				; 14  :  54
 	nop
-	move.b	d0,1(zram,chnid)					; 4+14 : 18
+	move.b	d0,1(zram,chnid)				; 4+14 : 18
 	mds_z80_start
 	swap	chnid
 
@@ -1785,7 +1785,7 @@ mds_fm0_update
 	mds_z80_wait_fm
 	move.b	d1,0(zram,chnid)
 	nop
-	move.b	d0,1(zram,chnid)					; 4+14 : 18
+	move.b	d0,1(zram,chnid)				; 4+14 : 18
 	mds_z80_start
 	swap	chnid
 
@@ -1807,10 +1807,10 @@ mds_fm0_update
 @no_fm3_key_on
 	mds_z80_wait_fm
 	move.b	#$28,$4000(zram)
-	add.b	d0,d0								; 4 :  4
-	andi.b	#$f0,d0								; 8 : 12
-	or.b	chnid,d0							; 4 : 16
-	move.b	d0,$4001(zram)						;12 : 28
+	add.b	d0,d0							; 4 :  4
+	andi.b	#$f0,d0							; 8 : 12
+	or.b	chnid,d0						; 4 : 16
+	move.b	d0,$4001(zram)					;12 : 28
 	mds_z80_start
 
 @no_key_on
@@ -1890,7 +1890,7 @@ mds_psg_update_env
 @pos	equr	d1
 @cmd	equr	d0
 
-	tst.l	flag								; enable flag cleared?
+	tst.l	flag							; enable flag cleared?
 	bpl.w	@silence
 
 ;----------------------------------------------------------------------
@@ -1903,7 +1903,7 @@ mds_psg_update_env
 	bclr	#nf+nf_key_off,flag
 	beq.s	@tie
 
-	moveq	#$1f,@cmd								;silence
+	moveq	#$1f,@cmd						; silence
 	move.w	@cmd,t_psg_eg_pos(twork)
 	bset	#nf+nf_sustain,flag
 
@@ -1915,7 +1915,7 @@ mds_psg_update_env
 ;----------------------------------------------------------------------
 ; envelope disable
 ;----------------------------------------------------------------------
-	btst	#nf+nf_key_off,flag					;skip delays for keyoff
+	btst	#nf+nf_key_off,flag				; skip delays for keyoff
 	bne.s	@key_off
 @tie
 	btst	#nf+nf_sustain,flag
@@ -1950,7 +1950,7 @@ mds_psg_update_env
 	clr.w	@pos
 	move.b	t_psg_eg_pos(twork),@pos
 	addq.b	#1,@pos
-	beq.s	@silence							; position FF = silence
+	beq.s	@silence						; position FF = silence
 	movea.w	t_psg_eg_addr(twork),tmpa1
 	adda.l	a_sdtop,tmpa1
 	move.b	-1(tmpa1,@pos),@cmd
@@ -1961,13 +1961,13 @@ mds_psg_update_env
 	btst	#nf+nf_sustain,flag
 	bne.s	@no_release
 	cmpi.b	#$01,@cmd
-	bne.s	@no_jump							; key off can't jump
+	bne.s	@no_jump						; key off can't jump
 	bset	#nf+nf_sustain,flag
 	bra.s	@read_next
 
 @no_release
 	cmpi.b	#$01,@cmd
-	bne.s	@no_sustain							; sustain hold
+	bne.s	@no_sustain						; sustain hold
 	clr.b	t_psg_eg_delay(twork)
 	bra.s	@hold
 
@@ -1990,7 +1990,7 @@ mds_psg_update_env
 	cmpi.b	#$10,@cmd
 	bcc.b	@no_silence
 @silence
-	move.w	#$ff0f,t_psg_eg_pos(twork)	; disable envelope
+	move.w	#$ff0f,t_psg_eg_pos(twork)		; disable envelope
 	bclr	#nf+nf_key_off,flag
 	moveq	#$1f,@cmd
 	or.b	chnid,@cmd
@@ -2033,7 +2033,7 @@ mds_psg_update_env
 mds_psg3_update
 	move.b	t_op_mask(twork),d4
 	bpl.s	mds_psg_update
-	move.b	#$df,sound_psg						; mute psg ch 3
+	move.b	#$df,sound_psg					; mute psg ch 3
 	andi.b	#$7f,d4
 	bne.w	mds_fm3_update
 @disable_fm3
@@ -2064,8 +2064,8 @@ mds_psgn_update
 	bsr.w	mds_psg_update_env
 	bsr.w	mds_pitch_update
 
-	moveq	#-64,chnid							; psg3 channel id
-	move.w	t_psg_nreset(twork),d1				; noise mode + reset
+	moveq	#-64,chnid						; psg3 channel id
+	move.w	t_psg_nreset(twork),d1			; noise mode + reset
 	bmi.s	@noise_reset
 	bclr	#nf+nf_nmode,flag
 	bne.s	@noise_reset
@@ -2126,7 +2126,7 @@ mds_dummy_update
 ; PCM1 update
 ;----------------------------------------------------------------------
 mds_pcm1_update
-	moveq	#0,d0									;pcm1 offset
+	moveq	#0,d0							; pcm1 offset
 	tst.l	flag
 	bmi.s	@no_disable
 	clr.b	w_pcm_enable(work)
@@ -2141,7 +2141,7 @@ mds_pcm1_update
 	move.b	#$28,$4002(zram)
 	nop
 	nop
-	move.b	#$02,$4003(zram)						;12 cycles + 2 nop
+	move.b	#$02,$4003(zram)				; 12 cycles + 2 nop
 	mds_z80_start
 
 @no_fm_key_off
@@ -2161,7 +2161,7 @@ mds_pcm1_update
 ; PCM2 update
 ;----------------------------------------------------------------------
 mds_pcm2_update
-	moveq	#1,d0									;pcm2 offset
+	moveq	#1,d0							; pcm2 offset
 	st.b	1+w_pcm_enable(work)
 	tst.l	flag
 	bmi.s	mds_pcm_update
@@ -2190,7 +2190,7 @@ mds_pcm_key_on
 	bclr	#nf+nf_key_off,flag
 	beq.w	mds_update_return
 	bclr	#nf+nf_vol,flag
-	bclr	#nf+nf_slur,flag		;slur is cleared but not used
+	bclr	#nf+nf_slur,flag	; slur is cleared but not handled
 	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
 	sub.b	t_vol(twork),d1
 	move.b	t_ins(twork),d2
@@ -2211,8 +2211,8 @@ mds_pcm_key_off
 ; Upload Z80 program. Assumes Z80 is already stopped
 ;----------------------------------------------------------------------
 mds_z80_init
-	move.l	(a0),-(sp)					;backup work
-	lea		@z80_driver(pc),a0			;upload Z80 driver
+	move.l	(a0),-(sp)						;backup work
+	lea		@z80_driver(pc),a0				;upload Z80 driver
 	lea		z80_ram,a1
 
 	if PACK_Z80
@@ -2225,43 +2225,43 @@ mds_z80_init
 	endif
 
 	lea		@volume_table(pc),a0
-	lea		z80_ram+z_vtab,a1			; calculate volume tables
+	lea		z80_ram+z_vtab,a1				; calculate volume tables
 	moveq	#0,d0
 @next_byte
 	move.b	d0,d1
-	eori.b	#$80,d1						;<-- for unsigned samples
+	eori.b	#$80,d1							;<-- for unsigned samples
 	ext.w	d1
 	muls	(a0),d1
 	lsr.w	#8,d1
 	move.b	d1,(a1)+
 	addq.b	#1,d0
 	bne.s	@next_byte
-	cmpi.w	#8,(a0)+					; last entry?
+	cmpi.w	#8,(a0)+						; last entry?
 	bne.s	@next_byte
 
 	lea		z80_ram+z_stab,a1
-	move.l	(sp)+,a0					; get work
-	adda.l	(a0),a0						; get pcm table
+	move.l	(sp)+,a0						; get work
+	adda.l	(a0),a0							; get pcm table
 	move.w	(a0)+,d0
 	beq.s	@skip
 	subq.w	#1,d0
 @next_pcm
-	move.l	(a0)+,d1					; get addr
+	move.l	(a0)+,d1						; get addr
 	add.l	a2,d1
 	lsl.l	#1,d1
 	swap	d1
-	move.b	#0,(a1)+					; bank
+	move.b	#0,(a1)+						; bank
 	move.b	d1,(a1)+
 	swap	d1
 	lsr.w	#1,d1
 	ori.w	#$8000,d1
-	move.b	d1,(a1)+					; address
+	move.b	d1,(a1)+						; address
 	ror.w	#8,d1
 	move.b	d1,(a1)+
 	move.w	(a0)+,d1
-	lsr.w	#5,d1						; div by 32
+	lsr.w	#5,d1							; div by 32
 	addi.w	#$1ff,d1
-	move.b	d1,(a1)+					; length
+	move.b	d1,(a1)+						; length
 	ror.w	#8,d1
 	move.b	d1,(a1)+
 	dbra	d0,@next_pcm
