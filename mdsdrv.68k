@@ -8,6 +8,7 @@ ASMZ80 = 0
 PACK_Z80 = 1
 
 	include		"mdssub.inc"
+	include		"mdsseq.inc"
 
 ;======================================================================
 ; ABI call
