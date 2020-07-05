@@ -59,13 +59,15 @@ nf_enabled		rs.b	1			; envelopes enabled(must be bit7!)
 ;======================================================================
 	rsreset
 cf_drum_mode	rs.b	1			; drum mode enabled
-				rs.b	1			;    (removed)
+				rs.b	1			; (unused bit)
 cf_pcm_control	rs.b	1			; pcm instrument loaded
 cf_stop			rs.b	1			; stop channel
 cf_suspend		rs.b	1			; track is paused and can be
 									;   restarted
 cf_background	rs.b	1			; track is deprioritized and
 									;   plays in the background
+				rs.b	1			; (unused bit)
+cf_key_on		rs.b	1			; channel is currently playing
 
 ;======================================================================
 ; flag bitmasks

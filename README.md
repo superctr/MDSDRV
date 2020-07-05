@@ -1,12 +1,18 @@
 `mdsdrv`
 ========
-A sound driver for Sega Mega Drive
+A sound driver for Sega Mega Drive/Genesis.
 
 ## Features
-- Runs on the 68000
+- Runs on the 68000 with the Z80 controlling PCM playback.
 - 16 monophonic tracks that can be used for BGM or sound effects.
 	Each track can be assigned to a channel with 4 levels of priority.
-- Supports 6 FM + 4 PSG
+- Can use any combination of FM, PSG and PCM sound sources.
+- FM3 special mode:
+	- Can assign each or a pair of FM3 operators to a separate track
+	  with volume control.
+- PCM playback modes:
+	- 1 channel PCM playback at ~16 kHz with volume control
+	- 2 channel PCM playback at ~13.3 kHz with volume control
 - Compact sequence format (similar to SMPS)
 	- Sound data can be compiled from MML files using `ctrmml`
 - Various effects supported:
@@ -21,8 +27,7 @@ A sound driver for Sega Mega Drive
 - Uses approximately 1 kb (1024 bytes) of RAM.
 
 ### Upcoming features
-- 2 channel PCM playback with volume control
-- FM3 special mode
+- Macro tables
 
 ## How to use
 

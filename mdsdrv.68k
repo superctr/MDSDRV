@@ -1644,6 +1644,8 @@ mds_fm0_update
 	bclr	#nf+nf_key_off,flag
 	beq.s	@no_key_off
 
+	bclr	#cf+cf_key_on,flag
+
 	mds_z80_wait_fm
 	move.b	#$28,$4000(zram)
 
@@ -1798,6 +1800,8 @@ mds_fm0_update
 	beq.s	@no_key_on
 	bclr	#nf+nf_slur,flag
 	bne.s	@no_key_on
+	bset	#cf+cf_key_on,flag
+
 	move.b	t_op_mask(twork),d0
 	not.b	d0
 	bmi.s	@no_fm3_key_on
@@ -1823,6 +1827,8 @@ mds_fm0_update
 mds_fm3_update
 	bclr	#nf+nf_key_off,flag
 	beq.s	@no_key_off
+
+	bclr	#cf+cf_key_on,flag
 	mds_z80_wait_fm
 	move.b	#$28,$4000(zram)
 	move.b	d4,d0
@@ -1861,6 +1867,7 @@ mds_fm3_update
 	beq.s	@no_key_on
 	bclr	#nf+nf_slur,flag
 	bne.s	@no_key_on
+	bset	#cf+cf_key_on,flag
 	not.b	d4
 	or.b	w_fm3_mask(work),d4
 	move.b	d4,w_fm3_mask(work)
@@ -1904,6 +1911,7 @@ mds_psg_update_env
 	bclr	#nf+nf_key_off,flag
 	beq.s	@tie
 
+	bset	#cf+cf_key_on,flag
 	moveq	#$1f,@cmd						; silence
 	move.w	@cmd,t_psg_eg_pos(twork)
 	bset	#nf+nf_sustain,flag
@@ -1942,7 +1950,7 @@ mds_psg_update_env
 ;----------------------------------------------------------------------
 ; key_off
 ;----------------------------------------------------------------------
-	andi.l	#~((1<<(nf+nf_sustain))+(1<<(nf+nf_key_off))),flag
+	andi.l	#~((1<<(nf+nf_sustain))|(1<<(nf+nf_key_off))|(1<<(cf+cf_key_on))),flag
 
 @command
 ;----------------------------------------------------------------------
@@ -1992,6 +2000,7 @@ mds_psg_update_env
 	bcc.b	@no_silence
 @silence
 	move.w	#$ff0f,t_psg_eg_pos(twork)		; disable envelope
+	bclr	#cf+cf_key_on,flag
 	bclr	#nf+nf_key_off,flag
 	moveq	#$1f,@cmd
 	or.b	chnid,@cmd
@@ -2190,6 +2199,7 @@ mds_pcm_update
 mds_pcm_key_on
 	bclr	#nf+nf_key_off,flag
 	beq.w	mds_update_return
+	bset	#cf+cf_key_on,flag
 	bclr	#nf+nf_vol,flag
 	bclr	#nf+nf_slur,flag	; slur is cleared but not handled
 	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
@@ -2199,6 +2209,7 @@ mds_pcm_key_on
 	bra.w	mds_update_return
 
 mds_pcm_key_off
+	bclr	#cf+cf_key_on,flag
 	bclr	#nf+nf_vol,flag
 	mds_z80_pcm_stop d0
 	bra.w	mds_update_return
