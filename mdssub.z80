@@ -134,6 +134,7 @@ idle_main
 	ld		(ix+0),$2b						; disable DAC
 	ld		(ix+1),$00
 	xor		a
+	ld		(z_pcm_load),a
 	ld		(de),a
 	exx
 	ld		hl,z_pcm_key_on
@@ -306,6 +307,10 @@ swap_buffers
 	ld		(pcm2_buf),a
 	exx
 	faster_poll											;POLL 29
+
+	ld		a,c
+	and		$1f
+	ld		(z_pcm_load),a
 
 sync_loop
 	xor		a					; wait until we can swap the buffer

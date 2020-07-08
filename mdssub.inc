@@ -25,6 +25,8 @@ z_pcm2_vol		equ		$098b		;volume table hi (0=key off)
 z_pcm1_src		equ		$098c		;sample number
 z_pcm2_src		equ		$098d		;sample number
 
+z_pcm_load		equ		$09a0		;pcm load (buffer pos at idle)
+
 z_stab			equ		$0a00
 z_vtab			equ		$1000
 

@@ -207,7 +207,9 @@ print_counters:
 	bsr.w	print_command
 	rts
 @plist
-	p_pos		1,25
+	p_pos		1,22
+	p_hex_b		r_z80_load
+	p_shift		0,3
 	p_hex_w		r_intcnt
 	p_shift		0,5
 	p_hex_w		r_pcount0
@@ -227,7 +229,7 @@ vbl:
 ;	move.w	d0, r_pcount0
 	lea		r_driver,a0
 	bsr.w	mds_update
-	
+
 	addq	#1, r_intcnt
 	move.w	vdp_counter,d0
 	move.w	d0, d1
@@ -235,7 +237,7 @@ vbl:
 	move.w	d0, r_pcount0
 	sub.w	#$e000, d1
 	move.w	d1, r_pcount1
-	
+
 	movem.l	(sp)+,d0-d7/a0-a6
 	rte
 hbl:
