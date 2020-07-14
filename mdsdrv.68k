@@ -478,11 +478,11 @@ mds_handle_request
 @use_track
 	move.l	@tbase,t_base_addr(twork)
 
-	move.b	(tmpa0)+,@reqdata				; channel id
+	move.b	(tmpa0)+,-(sp)					; push channel id
 	move.b	#nm_init,t_note_flag(twork)
 	move.b	(tmpa0)+,t_channel_flag(twork)
-	lsl.w	#8,@reqdata
-	or.w	rnum,@reqdata
+	move.w	(sp)+,@reqdata				; pop channel id in high byte
+	move.b	rnum,@reqdata
 	move.w	@reqdata,t_channel_id(twork)
 
 	move.w	@zero,@tempreg					; allocate track
@@ -1067,8 +1067,8 @@ mds_update_seq
 ; jump - jump to offset
 ;----------------------------------------------------------------------
 @cmd_jump
-	move.b	0(@tbase,@trackpos),@tempreg	; read 16-bit param
-	lsl.w	#8,@tempreg
+	move.b	0(@tbase,@trackpos),-(sp)		; read 16-bit param
+	move.w	(sp)+,@tempreg
 	move.b	1(@tbase,@trackpos),@tempreg
 	add.w	@tempreg,@cmdlen
 	bra.w	@next_command
@@ -2008,7 +2008,8 @@ mds_psg_update_env
 	rts
 
 @no_silence
-	lsl.w	#8,@pos
+	move.b	@pos,-(sp)						; lsl #8
+	move.w	(sp)+,@pos
 	move.b	@cmd,@pos
 	move.w	@pos,t_psg_eg_pos(twork)	; write both at the same time
 	bclr	#nf+nf_vol,flag
