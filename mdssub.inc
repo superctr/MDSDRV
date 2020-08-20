@@ -2,38 +2,53 @@
 ; Z80 public variables
 ;======================================================================
 
-z_busy			equ		$0980
+z_busy			equ		$0e00	; Indicates Z80 is writing to FM chip
+z_load			equ		$0e01	; Number of buffered samples
+z_mode_change	equ		$0e02	; Set to 1 to change mixing mode
+z_key_on		equ		$0e03	; Set to 1 after setting Key on
+z_min_buffer	equ		$0e04	; Requested minimum buffer size
+z_mode			equ		$0e05	; Current mixing mode
 
-z_fm_reg27		equ		$0981		;fm timer reset command
-z_fm_reg_update	equ		$0008		;set to 0 to write reg 27
+z_dummy			equ		$0e06	; just a dummy variable to burn cycles
 
-z_pcm_flag		equ		$0982		;pcm status flags
-z_pcm_key_on	equ		$0983		;pcm keyon trigger
+z_pcm1			equ		$0e08		; PCM 1 variables
+z_pcm2			equ		z_pcm1+8	; PCM 2 variables
+z_pcm3			equ		z_pcm2+8	; PCM 3 variables
 
-z_pcm1_key_on	equ		$0984		;pcm key on flags
-z_pcm2_key_on	equ		$0985		;pcm key on flags
+zp_key_on		equ		0
+zp_vol			equ		1
+zp_pitch		equ		2
+zp_bank			equ		3
+zp_addr			equ		4
+zp_count		equ		6
 
-z_pcm1_key_off	equ		$0986		;pcm key off flags
-z_pcm2_key_off	equ		$0987		;pcm key off flags
+z_pcm1_key_on	equ		z_pcm1+0	; Set to 1 for key on
+z_pcm1_vol		equ		z_pcm1+1	; Volume (10-1f). Key off (f0-ff)
+z_pcm1_pitch	equ		z_pcm1+2	; Pitch (00-07)
+z_pcm1_bank		equ		z_pcm1+3	; Bank
+z_pcm1_addr		equ		z_pcm1+4	; Address
+z_pcm1_count	equ		z_pcm1+6	; Number of buffers to play
 
-z_pcm1_source	equ		$0988		;pcm source select flag
-z_pcm2_source	equ		$0989		;pcm source select flag
+z_pcm2_key_on	equ		z_pcm2+0
+z_pcm2_vol		equ		z_pcm2+1
+z_pcm2_pitch	equ		z_pcm2+2
+z_pcm2_bank		equ		z_pcm2+3
+z_pcm2_addr		equ		z_pcm2+4
+z_pcm2_count	equ		z_pcm2+6
 
-z_pcm1_vol		equ		$098a		;volume table hi (0=key off)
-z_pcm2_vol		equ		$098b		;volume table hi (0=key off)
+z_pcm3_key_on	equ		z_pcm3+0
+z_pcm3_vol		equ		z_pcm3+1
+z_pcm3_pitch	equ		z_pcm3+2
+z_pcm3_bank		equ		z_pcm3+3
+z_pcm3_addr		equ		z_pcm3+4
+z_pcm3_count	equ		z_pcm3+6
 
-z_pcm1_src		equ		$098c		;sample number
-z_pcm2_src		equ		$098d		;sample number
+z_stack			equ		$0f00
+z_buffer		equ		$0f00
 
-z_pcm_load		equ		$09a0		;pcm load (buffer pos at idle)
-
-z_stab			equ		$0a00
 z_vtab			equ		$1000
 
-z_flag_pcm1		equ		0
-z_flag_pcm2		equ		1
-
-z_flag_key_on	equ		7
+z_pcm_load		equ		z_load
 
 
 ;======================================================================
@@ -45,6 +60,11 @@ z_flag_key_on	equ		7
 ; request Z80 bus for sending a request
 ;----------------------------------------------------------------------
 mds_z80_wait_req	macro
+@stop_z80\@
+	move.w	#$0100,(zreq)
+@wait_z80\@
+	btst.b	#0,(zreq)
+	bne.s	@wait_z80\@
 	endm
 
 ;======================================================================
@@ -80,69 +100,30 @@ mds_z80_cmd0		macro cmd
 mds_z80_cmd2		macro cmd,arg
 	endm
 
-mds_z80_pcm_start_f	macro ch,vol,src
-@stop_z80\@
-	move.w	#$0100,(zreq)
-@wait_z80\@
-	btst.b	#0,(zreq)
-	bne.s	@wait_z80\@
-; TODO: Maybe the variables should be rearranged to avoid having to
-; do this.
-	lea		z_pcm1_key_on(zram),zram
-	st.b	0(zram,\ch)
-	st.b	z_pcm1_source-z_pcm1_key_on(zram,\ch)
-	move.b	\vol,z_pcm1_vol-z_pcm1_key_on(zram,\ch)
-	move.b	\src,z_pcm1_src-z_pcm1_key_on(zram,\ch)
-	lea		-z_pcm1_key_on(zram),zram
-	st.b	z_pcm_key_on(zram)
-	move.w	#$0000,(zreq)
-	endm
-
-mds_z80_pcm_start	macro ch
-@stop_z80\@
-	move.w	#$0100,(zreq)
-@wait_z80\@
-	btst.b	#0,(zreq)
-	bne.s	@wait_z80\@
-	lea		z_pcm1_key_on(zram),zram
-	st.b	0(zram,\ch)
-	lea		-z_pcm1_key_on(zram),zram
-	st.b	z_pcm_key_on(zram)
-	move.w	#$0000,(zreq)
+mds_z80_pcm_start	macro ch,vol
+	mds_z80_wait_req
+	st.b	z_key_on(zram)
+	st.b	zp_key_on(zram,\ch)
+	move.b	\vol,zp_vol(zram,\ch)
+	mds_z80_start
 	endm
 
 mds_z80_pcm_stop	macro ch
-@stop_z80\@
-	move.w	#$0100,(zreq)
-@wait_z80\@
-	btst.b	#0,(zreq)
-	bne.s	@wait_z80\@
-	lea		z_pcm1_key_off(zram),zram
-	st.b	0(zram,\ch)
-	lea		-z_pcm1_key_off(zram),zram
-	move.w	#$0000,(zreq)
+	mds_z80_wait_req
+	ori.b	#$80,zp_vol(zram,\ch)
+	mds_z80_start
 	endm
 
 mds_z80_pcm_stop_i	macro ch
-@stop_z80\@
-	move.w	#$0100,(zreq)
-@wait_z80\@
-	btst.b	#0,(zreq)
-	bne.s	@wait_z80\@
-	st.b	\ch+z_pcm1_key_off(zram)
-	move.w	#$0000,(zreq)
+	mds_z80_wait_req
+	ori.b	#$80,(\ch*8)+zp_vol(zram)
+	mds_z80_start
 	endm
 
 mds_z80_pcm_volume	macro ch,vol
-@stop_z80\@
-	move.w	#$0100,(zreq)
-@wait_z80\@
-	btst.b	#0,(zreq)
-	bne.s	@wait_z80\@
-	lea		z_pcm1_vol(zram),zram
-	move.b	\vol,0(zram,\ch)
-	lea		-z_pcm1_vol(zram),zram
-	move.w	#$0000,(zreq)
+	mds_z80_wait_req
+	move.b	\vol,zp_vol(zram,\ch)
+	mds_z80_start
 	endm
 
 mds_z80_unpack	macro
@@ -222,96 +203,6 @@ mds_z80_unpack	macro
 
 	if	ASMZ80
 
-;======================================================================
-; DAC macros
-;----------------------------------------------------------------------
-	; Assume it's already time to update DAC samples
-	macro	write_dac								;87
-		ld		(de),a				;set busy flag
-		ld		(hl),$27			;timer reset
-		ld		a,iyl
-		ld		($4001),a
-		ld		a,(bc)
-		ld		(hl),$2a			;sample load
-		xor		e					;add $80
-		ld		($4001),a
-		inc		c
-		xor		a
-		ld		(de),a
-	endm
-
-	; Assumes we're already in exx
-	macro	faster_poll								;87+18=105
-		ld		a,(hl)
-		rrca
-		jr		nc,.no_update
-		write_dac
-.no_update
-	endm
-
-	macro	fast_poll								;105+8=113
-		exx
-		faster_poll
-		exx
-	endm
-
-;======================================================================
-; PCM macros
-;----------------------------------------------------------------------
-	macro set_bank				; ???
-		cp		iyh
-		jp		z,.no_bankswitch
-		ld		iyh,a
-		ld		hl,$6000
-		dup		7
-			ld		(hl),a
-			rra
-		edup
-		ld		(hl),a
-		ld		(hl),h
-.no_bankswitch
-	endm
-
-	; b  = volume table offset
-	; hl = sample position
-	; de = buffer position
-	macro	read_one			; 27
-		ld		c,(hl)
-		inc		hl
-		ld		a,(bc)
-		ld		(de),a
-	endm
-	macro	read_loop			; 120 = 27*4 + 4*3
-		read_one
-		inc		e
-		read_one
-		inc		e
-		read_one
-		inc		e
-		read_one
-	endm
-
-	; hl = mixed output buffer
-	; de = sample position
-	; b  = volume table offset
-	macro	read_mix_one		; 62
-		ld		a,(de)
-		ld		c,a
-		inc		de
-		ld		a,(bc)
-		add		a,(hl)
-		jp		po,.no_ovf
-		ld		a,0
-		adc		a,$7f
-.no_ovf
-		ld		(hl),a
-	endm
-
-	macro	read_mix_loop		; 128
-		read_mix_one
-		inc		l
-		read_mix_one
-	endm
 	endif
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:

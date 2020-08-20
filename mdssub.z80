@@ -1,448 +1,1496 @@
 ;======================================================================
 ; MDSDRV - mega drive 68k sound driver
 ; (C) 2019-2020 ian karlsson
+;======================================================================
+; PCM sound driver, supports the following modes:
+;    2xPCM max at 18khz   (201 cycles, 134 excl output)
+;    3xPCM max at 13.5khz (268 cycles, 201 excl output)
 ;----------------------------------------------------------------------
-; Z80 driver - handles PCM and common FM chip writes
-;======================================================================
-
-;======================================================================
-; PCM driver, attempt 2
 ;
-; It seems like the max sample rate for this driver is about 16000? hz.
-; around 14-15000? with mixing.
-; Unfortunately just polling the FM timer creates a lot of overhead.
-; By removing the timer polls, it's possible to go up to >20 khz.
+; Note: Samples that switch banks during playback must be aligned so
+;       the bank switch is done just after bank boundary crossing.
+;
+; Required alignment (in bytes) for each rate value and mixing mode:
+; +------+----+----+----+----+----+----+----+----+
+; | Rate:|  1 |  2 |  3 |  4 |  5 |  6 |  7 |  8 |
+; +------+----+----+----+----+----+----+----+----+
+; | 2 ch |  4 |  8 | 12 | 16 | 20 | 24 | 28 | 32 |
+; | 3 ch |  5 | 10 | 15 | 20 | 25 | 30 | 30 | 30 |
+; +------+----+----+----+----+----+----+----+----+
+;
 ;======================================================================
-
-;======================================================================
-; Note:
-; Samples can cross the 32kb bank boundary, however then it is
-; necessary that the start position is aligned to a 32-byte interval,
-; so that the bank boundary is not crossed in the middle of the buffer.
-;======================================================================
-	define VERSION "PCM DRIVER V2.0 for MDSDRV"
-
-ASM68K			equ		0
-ASMZ80			equ		1
-	include "mdssub.inc"
-
-;======================================================================
-; VARIABLE USAGE
-;----------------------------------------------------------------------
-pcm1_regs	equ		$990
-pcm1_bank	equ		$991
-pcm1_start	equ		$992
-pcm1_length	equ		$994
-
-pcm2_regs	equ		$998
-pcm2_bank	equ		$999
-pcm2_start	equ		$99a
-pcm2_length	equ		$99c
-
-stack		equ		$9e0
-
-out_buf1	equ		$960
-out_buf2	equ		$9e0
 
 ;======================================================================
 ; REGISTER USAGE
 ;----------------------------------------------------------------------
-;	de		pointer to busy flag (<$100)
-;	bc		pointer to mixed PCM buffer
-;	hl,ix	FM chip
-;	iyh		current bank
-;	iyl		current timer reload value
+;	de		$0fxx		sample read position
+;	bc		$2a80
+;	hl		$0e00		busy flag address
+;	ix		$xxxx		used as scratchpad
+;	iy		$0fxx		sample write position
 ;----------------------------------------------------------------------
 ;	hl', de', bc' - reserved for the PCM playback routine
 ;----------------------------------------------------------------------
 
-	org		$0
+	define VERSION "PCM DRIVER V3.0 for MDSDRV"
+
+ASM68K		equ 0
+ASMZ80		equ 0
+
+PCM_MIN_BUFFER	equ		40
+DEFAULT_MODE	equ		2
+
+	include "mdssub.inc"
+
 ;======================================================================
-; entry point
+; MACROS
 ;----------------------------------------------------------------------
+	macro out_dac							; = 67
+		exx									;4
+		ld		(hl),h						;7
+		ld		a,b							;4
+		ld		($4000),a					;13
+		ld		a,(de)						;7
+		xor		c							;4
+		ld		($4001),a					;13
+		inc		e							;4
+		ld		(hl),l						;7
+		exx									;4
+	endm
+
+	macro out_dac_slow						;11 in, 10 out
+		rst		out_dac_slow
+	endm
+
+	; a = input register
+	macro set_bank							; = 101
+		ld		hl,$6000					;10
+		dup		7							;(77)
+			ld	(hl),a							;7
+			rra									;4
+		edup
+		ld		(hl),a						;7
+		ld		(hl),h						;7
+	endm
+
+;----------------------------------------------------------------------
+	; quickly set bank. The instructions need to be modified to set
+	; a new bank
+	macro set_bank_fast						; = 73
+		ld		hl,$6001					;10
+		dup		9							;(63)
+			ld	(hl),h							;7
+		edup
+	endm
+
+	; same as above except uses de instead of bc
+	macro write_bank_start_de addr			; = 21
+		ld		d,a							;4
+		ld		e,$74						;7		; ld (hl),h
+		ld		hl,addr+3					;10
+	endm
+
+	macro write_bank_ins_de					; = 29
+		xor		a							;4
+		rr		d							;8
+		adc		e							;4
+		ld		(hl),a						;7
+		inc		hl							;6
+	endm
+
+	; begins the bank rewrite
+	macro write_bank_start_bc addr			; = 21
+		ld		b,a							;4
+		ld		c,$74						;7		; ld (hl),h
+		ld		hl,addr+3					;10
+	endm
+
+	; writes a bank instruction
+	macro write_bank_ins_bc					; = 29
+		xor		a							;4
+		rr		b							;8
+		adc		c							;4
+		ld		(hl),a						;7
+		inc		hl							;6
+	endm
+
+	macro check_bank skippos
+		bit		7,h
+		jp		nz,skippos
+		set		7,h
+		out_dac
+	endm
+
+;----------------------------------------------------------------------
+	; b  = volume table offset
+	; hl = sample position
+	; de = buffer position
+	macro	read_one						; = 27
+		ld		c,(hl)						;7
+		inc		hl							;6
+		ld		a,(bc)						;7
+		ld		(de),a						;7
+	endm
+
+	macro	inc_read_one					; = 31
+		inc		e
+		read_one
+	endm
+
+	; hl = mixed output buffer
+	; de = sample position
+	; b  = volume table offset
+	macro	read_mix_one					; = 48 (59 worst case)
+		ld		a,(de)						;7
+		inc		de							;6
+		ld		c,a							;4
+		ld		a,(bc)						;7
+		add		a,(hl)						;7
+		jp		po,.no_ovf					;10
+		sbc		a,a							;4
+		xor		$7f							;7
+.no_ovf
+		ld		(hl),a						;7
+	endm
+
+	macro	inc_read_mix_one				; = 52 (63 worst case)
+		inc		l
+		read_mix_one
+	endm
+
+;----------------------------------------------------------------------
+	; Indicate that n bytes have been written to buffer.
+	macro	add_write_pos n					; = 20
+		ld		a,iyl						;8
+		add		a,n							;4
+		ld		iyl,a						;8
+	endm
+
+	; sample keyoff is also an exceptional case
+	macro	dec_count count_addr,enable_addr	; = 39
+		dec		bc							;6
+		ld		(count_addr),bc				;20
+		djnz	.no_keyoff					;13
+		xor		a
+		ld		a,$c3						;change "jp m" to "jp"
+		ld		(enable_addr),a
+.no_keyoff
+	endm
+
+	macro	ldib addr						; = 24
+		ld		a,(hl)						; 7
+		ld		(addr),a					; 13
+		inc		l							; 4
+	endm
+
+	macro	ldiw addr						; = 42
+		ld		de,addr						; 10
+		ldi									; 16
+		ldi									; 16
+	endm
+
+
+;======================================================================
+; ENTRY POINT
+;----------------------------------------------------------------------
+	org		0
+
 entry
 	di
-	ld		sp,stack
 	xor		a
-	jp		main
+	ld		sp,z_stack
+	jp		entry2
 
+out_dac_slow								; in 11 (rst $08), out 10
+	out_dac
+	ret										; 10
 
-;======================================================================
-; User command handler
-;----------------------------------------------------------------------
-; TODO: channel 3 helper commands (Probably not as many as the
-;       previous driver, but we definitely need a command to set the
-;       timer reset command (also the ch3 special enable)
-
-user_cmd
-	ret						;first ret set to nop to call user rtn
-	exx
-	ld		a,$c9							;ret
-	ld		(user_cmd),a
-	ld		(de),a
-	ld		a,(z_fm_reg27)
-	ld		(ix+0),$27
-	ld		(ix+1),a
-	ld		iyl,a
-	xor		a
-	ld		(de),a
-	exx
-	ret
-
-;======================================================================
-; Main routine (called from entrypoint)
-;----------------------------------------------------------------------
-main
-	ld		hl,$0900
-	ld		de,$0901
-	ld		bc,$00ff
+entry2
+	ld		hl,z_busy
+	ld		de,z_busy+1
+	ld		bc,$01ff
 	ld		(hl),a
 	ldir
 
-	ld		ix,$4000
-	ld		hl,$4000
-	ld		iy,$ff15
+	ld		iy,z_buffer
 
-	ld		bc,out_buf1
-	ld		a,$fa
-	ld		(buf_sign),a					;jp m
-	ld		a,low(out_buf2)
-	ld		(pcm1_buf),a
-	ld		(pcm2_buf),a
-	ld		a,$15
-	ld		(z_fm_reg27),a
+	ld		hl,z_busy
+	ld		de,z_buffer+$e0
+	ld		bc,$2a80
+	exx
 
-	ld		de,z_busy
-	ld		(de),a
-	ld		(ix+0),$24						; default timer period
-	ld		(ix+1),$ff						; 7670454/(144*(1024-n))
-;	ld		(ix+0),$25						; 3fc = 13316 hz
-;	ld		(ix+1),$00						;          = ~269 cycles
-	ld		(ix+0),$25						; 3fd = 17755 hz
-	ld		(ix+1),$01						;          = ~201 cycles
-	ld		(ix+0),$27						; timer reset
-	ld		(ix+1),$15
+	ld		hl,PCM_MIN_BUFFER+(DEFAULT_MODE*256)
+	ld		(z_min_buffer),hl
+
+main_loop
+	ld		hl,main_loop
+	push	hl
+
+	ld		a,(z_mode)
+	ld		b,a
+	add		b
+	add		b
+	ld		(mode_table-1),a
+
+	xor		a
+	ld		(z_mode_change),a
 
 ;======================================================================
-; Idle main routine
+; Main jump table
 ;----------------------------------------------------------------------
-idle_main
-	or		d
-	ld		(de),a
-	ld		(ix+0),$2a						; default DAC
-	ld		(ix+1),$80
-	ld		(ix+0),$2b						; disable DAC
-	ld		(ix+1),$00
+	jr		main_loop
+mode_table
+	jp		m0_init							; 00 - disable mixing
+	jp		m0_init							; 01 - unused
+	jp		m2_init							; 02 - 2ch mixing @ 18k
+	jp		m3_init							; 03 - 3ch mixing @ 13k
+	jp		m0_init							; 04 - unused
+	rst		$00								; 05 - reset
+
+;======================================================================
+; 0ch mixing main routine (Idle)
+;----------------------------------------------------------------------
+m0_init
 	xor		a
-	ld		(z_pcm_load),a
-	ld		(de),a
+	ld		(z_pcm1_key_on),a
+	ld		(z_pcm2_key_on),a
+	ld		(z_pcm3_key_on),a
+	ld		(z_key_on),a
+
+;======================================================================
+; Idle while no PCM channels are playing.
+;----------------------------------------------------------------------
+idle_init
 	exx
-	ld		hl,z_pcm_key_on
+	ld		(hl),h
+	ld		a,$2a							; silence dac
+	ld		($4000),a
+	ld		a,$80
+	ld		($4001),a
+	ld		a,$2b							; disable dac
+	ld		($4000),a
+	ld		a,$00
+	ld		($4001),a
+	ld		(hl),l
+	exx
 
 idle_loop
 	xor		a
-	or		(hl)
-	jr		nz,pcm_main
-	rst		$08
-	jr		idle_loop
+	ld		hl,z_mode_change
+	cp		(hl)							; z_mode_change
+	jr		nz,.mode_changed
+	inc		l
+	cp		(hl)							; z_key_on
+	jr		z,idle_loop
 
-;======================================================================
-; PCM Main routine
-;----------------------------------------------------------------------
-pcm_main
+.mode_changed
 	exx
-	or		d
-	ld		(de),a
-	ld		(ix+0),$2b							; enable DAC
-	ld		(ix+1),$80
-	xor		a
-	ld		(de),a
+	ld		(hl),h
+	ld		a,$2b							; enable dac
+	ld		($4000),a
+	ld		a,$80
+	ld		($4001),a
+	ld		(hl),l
+	ld		e,iyl							; reset read position
 	exx
-
-pcm_loop
-	fast_poll											;POLL 1
-
-	; handle flags here
-	xor		a
-	ld		(hl),a								;reset keyon trigger
-	inc		hl
-	cp		(hl)
-	call	nz, pcm1_key_on
-	inc		hl
-	cp		(hl)
-	call	nz, pcm2_key_on
-
-	fast_poll											;POLL 2
+burn_31
+	nop
+burn_27
+	ret
 
 ;======================================================================
-; PCM1
+; 2ch mixing main routine
+; Max 134 cycles between writes on average.
 ;----------------------------------------------------------------------
-pcm1_main
-	ld		a,(z_fm_reg27)
-	ld		iyl,a
+m2_init
+	ld		a,$c3							; 7
+	ld		(m2_pcm1_enable),a				; 13
+	ld		a,$c3							; 7
+	ld		(m2_pcm2_enable),a				; 13
+	ld		h,high(z_pcm1_key_on)			; 10
 
-pcm1_buf		equ		$+1
-	ld		de,out_buf2
-	ld		a,(z_pcm1_vol)
-	or		a
-pcm1_enable		equ		$
-	jp		pcm1_disabled
-	ld		b,a
-	fast_poll											;POLL 31
+m2_key_on
+;-------------------------------------------; = 72 + ??
+	xor		a								; 4
+	ld		(hl),a							; 7
+	ld		l,low(z_pcm1_key_on)			; 7
+	cp		(hl)							; 7
+	call	nz,m2_pcm1_key_on				; 17/10 (-> 111)
 
-pcm1_abank		equ		$+1
-	ld		a,$00
-	set_bank
-	fast_poll											;POLL 3
+;-------------------------------------------; = 104 + ??
+	ld		l,low(z_pcm2_key_on)			; 7
+	cp		(hl)							; 7
+	call	nz,m2_pcm2_key_on				; 17/10 (-> 132)
 
-pcm1_addr		equ		$+1
-	ld		hl,$8000
+m2_loop
 
-	dup		7
-			read_loop
-			inc		e
-			fast_poll									;POLL 4-10
-	edup
+;--------------------------------------
+; - cycle # at entry:      134 - 47 = 87
+;
+; Update PCM 1
+; - buffer # needed:       3+8 = 11 (+3 if bank boundary crossed)
+;                          4 (if silent)
+; Update PCM 2
+; - buffer # needed:       1+16 = 17
+;--------------------------------------
 
-	read_loop
-	fast_poll											;POLL 11
+;-------------------------------------------; = 47
+	ld		a,(z_pcm1_vol)					; 13
+	or		a								; 4
+; replace with "jp m" to start playback
+m2_pcm1_enable		equ		$
+	jp		m2_pcm1_disabled				; 10 (-> 27)
+	ld		b,a								; 4
+	ld		d,iyh							; 8
+	ld		e,iyl							; 8
+	out_dac
 
-	bit		7,h
-	jp		nz,.same_bank
-	set		7,h
-	ld		a,(pcm1_abank)
-	inc		a
-	ld		(pcm1_abank),a
+;-------------------------------------------; = 101
+m2_pcm1_bank		equ		$
+	set_bank_fast							; 73
+m2_pcm1_addr		equ		$+1
+	ld		hl,$8000						; 10
+	ld		a,4								; 7
+	ld		ixl,4							; 11
 
-.same_bank
-	ld		(pcm1_addr),hl
-	ld		a,(z_pcm1_key_off)
-	or		a
-	jp		nz,pcm1_key_off
+;-------------------------------------------; = 101 + 31 = 132
 
-pcm1_left		equ 	$+1
-	ld		bc,$0200
-	dec		bc
-	ld		(pcm1_left),bc
-	djnz	pcm2_main
-pcm1_key_off
-	xor		a
-	ld		(z_pcm1_key_off),a
+m2_pcm1_loop
+m2_pcm1_pit0		equ		$+2
+	inc_read_one							; 31
+	out_dac
 
-	ld		a,$c3							; change "jp z" to "jp"
-	ld		(pcm1_enable),a
+;-------------------------------------------; = 128
+m2_pcm1_pit1		equ		$+2
+	inc_read_one							; 31
 
-;======================================================================
-; PCM2 + mix
-;----------------------------------------------------------------------
-pcm2_main
-	ld		a,(z_pcm2_vol)
-	or		a
-pcm2_enable		equ		$
-	jp		pcm2_disabled
-	ld		b,a
+m2_pcm1_pit2		equ		$+2
+	inc_read_one							; 31
 
-	ld		a,(z_fm_reg27)
-	ld		iyl,a
-	fast_poll											;POLL 30
+m2_pcm1_pit3		equ		$+2
+	inc_read_one							; 31
 
-pcm2_abank		equ		$+1
-	ld		a,$00
-	set_bank
-	fast_poll											;POLL 12
+m2_pcm1_pit4		equ		$+2
+	inc_read_one							; 31
+	inc		e								; 4
+	out_dac
 
-pcm2_buf		equ		$+1
-	ld		hl,out_buf2
-pcm2_addr		equ		$+1
-	ld		de,$8000
+;-------------------------------------------; = 107
 
-	dup		15
-			read_mix_loop
-			inc		l
-			fast_poll									;POLL 13-27
-	edup
+m2_pcm1_pit5		equ		$+1
+	read_one								; 27
 
-	read_mix_loop
-	fast_poll											;POLL 28
+m2_pcm1_pit6		equ		$+2
+	inc_read_one							; 31
 
-	bit		7,d
-	jp		nz,.same_bank
-	set		7,d
-	ld		hl,pcm2_abank
-	inc		(hl)
+m2_pcm1_pit7		equ		$+2
+	inc_read_one							; 31
 
-.same_bank
-	ld		(pcm2_addr),de
-	ld		a,(z_pcm2_key_off)
-	or		a
-	jp		nz,pcm2_key_off
+	dec		ixl								; 8
+	jp		nz, m2_pcm1_loop				; 10 (-> 107+31 = 138)
 
-pcm2_left		equ 	$+1
-	ld		bc,$0200
-	dec		bc
-	ld		(pcm2_left),bc
-	djnz	swap_buffers
-pcm2_key_off
-	xor		a
-	ld		(z_pcm2_key_off),a
+;-------------------------------------------; = 107 + 28 = 135
 
-	ld		a,$c3							; change "jp z" to "jp"
-	ld		(pcm2_enable),a
-	jr		swap_buffers
+m2_pcm1_count	equ		$+1
+	ld		bc,$0200						; 10
 
-;======================================================================
-; PCM2 disabled
-;----------------------------------------------------------------------
-pcm2_disabled
-	ld		hl,z_pcm_flag
-	res		z_flag_pcm2,(hl)
+	bit		7,h								; 8
+	jp		nz,m2_pcm1_nosw					; 10 (-> 107 + 28 = 135)
+	set		7,h								; 8
+	out_dac
 
-;======================================================================
-; Buffer sync
-;----------------------------------------------------------------------
-swap_buffers
-	ld		a,(pcm1_buf)
-	xor		$80
-	ld		(pcm1_buf),a
-	ld		(pcm2_buf),a
-	exx
-	faster_poll											;POLL 29
+;-------------------------------------------; = 56
+	push	hl								; 11
 
-	ld		a,c
+m2_pcm1_bank_num	equ		$+1
+	ld		a,$00							; 7
+	inc		a								; 4
+	ld		(m2_pcm1_bank_num),a			; 13
+	write_bank_start_de m2_pcm1_bank		; 21
+
+;-------------------------------------------; = 56+87 = 143
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	out_dac
+
+;-------------------------------------------; = 126
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	pop		hl								; 10
+
+m2_pcm1_nosw
+	out_dac
+
+;-------------------------------------------; = 55
+
+	ld		(m2_pcm1_addr),hl				; 16
+	dec_count m2_pcm1_count,m2_pcm1_enable	; 39
+
+;-------------------------------------------; = 55 + 73 = 128
+
+m2_pcm2_bank
+	set_bank_fast							; 73
+	out_dac
+
+;-------------------------------------------; = 72
+	ld		a,(z_pcm2_vol)					; 13
+	or		a								; 4
+m2_pcm2_enable		equ		$
+	jp		m2_pcm2_disabled				; 10 (-> 27)
+	ld		b,a								; 4
+	ld		d,iyh							; 8
+	ld		e,iyl							; 8
+	ex		de,hl							; 4
+
+m2_pcm2_addr		equ		$+1
+	ld		de,$8000						; 10
+	ld		ixl,4							; 11
+
+;-------------------------------------------; = 72 + 60 = 132
+m2_pcm2_loop
+m2_pcm2_pit0		equ		$+2
+	inc_read_mix_one						; 52(63)
+	nop										; 4
+	nop										; 4
+	out_dac
+
+;-------------------------------------------; = 135
+m2_pcm2_pit1		equ		$+2
+	inc_read_mix_one						; 52(63)
+
+m2_pcm2_pit2		equ		$+2
+	inc_read_mix_one						; 52(63)
+
+	call	burn_31							; 31
+	out_dac
+
+;-------------------------------------------; = 131
+; we could include an extra nop here, however we are at a
+; deficit after the "jp nz" below...
+; deficit : (144-134)*3 = 30
+; saved   : (134-130)*4 = 32
+m2_pcm2_pit3		equ		$+2
+	inc_read_mix_one						; 52(63)
+
+m2_pcm2_pit4		equ		$+2
+	inc_read_mix_one						; 52(63)
+
+	call	burn_27							; 27
+	out_dac
+
+;-------------------------------------------; = 136
+m2_pcm2_pit5		equ		$+2
+	inc_read_mix_one						; 52(63)
+
+m2_pcm2_pit6		equ		$+2
+	inc_read_mix_one						; 52(63)
+
+	call	burn_31							; 31
+	out_dac
+
+;-------------------------------------------; = 82
+m2_pcm2_pit7		equ		$+2
+	inc_read_mix_one						; 52(63)
+	nop										; 4
+	nop										; 4
+	nop										; 4
+	dec		ixl								; 8
+	jp		nz,m2_pcm2_loop					; 10 (->82+63 = 145 (!))
+
+
+;-------------------------------------------; = 81 + 49 = 130
+
+m2_pcm2_count		equ		$+1
+	ld		bc,$0200						; 10
+	dec_count m2_pcm2_count,m2_pcm2_enable	; 39
+	out_dac
+
+;-------------------------------------------; = 26
+	bit		7,d								;8
+	jp		nz,m2_pcm2_nosw					;10 (-> 18)
+	set		7,d								;8
+
+;-------------------------------------------; = 26 + 45 = 71
+m2_pcm2_bank_num	equ		$+1
+	ld		a,$00							; 7
+	inc		a								; 4
+	ld		(m2_pcm1_bank_num),a			; 13
+	write_bank_start_bc m2_pcm2_bank		; 21
+
+;-------------------------------------------; = 71 + 58 = 129
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
+	out_dac_slow
+
+;-------------------------------------------; = 145
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
+	out_dac_slow
+
+;-------------------------------------------; = 39
+	write_bank_ins_bc						; 29
+
+m2_pcm2_nosw
+;-------------------------------------------; = 18 + 65 = 83
+	ld		(m2_pcm2_addr),de				; 20
+	push	de								; 11
+	pop		de								; 10
+	nop										; 4
+	nop										; 4
+	nop										; 4
+	jr		m2_pcm_done						; 12
+
+;-------------------------------------------; = 27 + 57 = 84
+m2_pcm2_disabled
+	jp		p,.no_keyoff					; 10
+
+; special case if key off was triggered by setting volume to
+; e0-ff
 	and		$1f
-	ld		(z_pcm_load),a
+	ld		a,(z_pcm2_vol)
 
-sync_loop
-	xor		a					; wait until we can swap the buffer
-	or		c					; (when it changes sign)
-buf_sign		equ		 $
-	jp		m,sync_done
-	faster_poll
-	jr		sync_loop
+.no_keyoff
+	ld		a,$c3							; 7
+	ld		(m2_pcm2_enable),a				; 13
 
-sync_done
-	ld		a,c					; change to other buffer
-	add		$60
-	ld		c,a
-	exx
+; are any channels playing?
+	ld		hl,m2_pcm1_enable				; 10
+	cp		(hl)							; 7
 
-	ld		a,(buf_sign)		; alternate between "jp p" and "jp m"
-	xor		$08
-	ld		(buf_sign),a
+; disable pcm and wait until key on
+	call	z,idle_init						; 10
 
-	ld		hl,z_pcm_flag
-	ld		a,(hl)
-	inc		hl
-	or		(hl)
-	jp		nz,pcm_loop
-	exx
-	jp		idle_main
+;-------------------------------------------; = 84 + 23 = 107
+m2_pcm_done
+	ld		a,32							; 7
+	add		a,iyl							; 8
+	ld		iyl,a							; 8
+
+;-------------------------------------------; = 107 + 29 = 136
+	exx										; 4
+	sub		e								; 4
+	exx										; 4
+	ld		hl,z_load						; 10
+	ld		(hl),a							; 7
+
+m2_pcm_wait
+	out_dac
+
+;-------------------------------------------; = 30
+	ld		a,(z_min_buffer)				; 13
+	sub		(hl)							; 7
+	jp		c,m2_pcm_bufok					; 10
+
+;-------------------------------------------; = 30 + 52 = 82
+	xor		a								; 4
+	inc		l								; 4		;z_mode_change
+	cp		(hl)							; 7
+	ret		nz								; 5
+
+	inc		l								; 4		;z_key_on
+	cp		(hl)							; 4
+	jp		nz,m2_key_on					; 10 (-> 72)
+	jp		m2_loop							; 10
+
+m2_pcm_bufok
+
+;-------------------------------------------; = 30 + 71 = 101
+; Idling while we're waiting to read the buffer
+; TODO: we could do something useful here...
+	push	hl								; 11
+	pop		hl								; 10
+	push	hl								; 11
+	pop		hl								; 10
+	push	hl								; 11
+	pop		hl								; 10
+	inc		hl								; 6
+	nop										; 4
+
+;-------------------------------------------; = 103 + 31 = 134
+	ld		hl,z_load						; 10
+	dec		(hl)							; 11
+	jp		m2_pcm_wait						; 10
+
 
 ;======================================================================
-; Read sample parameters from source table.
-;======================================================================
-	macro	set_src		var,flag
-		ld		hl,0
-		ld		bc,z_stab
-		add		hl,de						;multiply by 6
-		add		hl,hl
-		add		hl,de
-		add		hl,hl
-		add		hl,bc
-		ld		bc,$0006
-		ld		de,var
-		ldir
-	endm
-
-;======================================================================
-; PCM1 key on
+; Fill sample buffer with silence when PCM 1 is disabled.
 ;----------------------------------------------------------------------
-pcm1_key_on
-	ld		(hl),a
-	push	hl
-	ld		hl,z_pcm1_source
-	cp		(hl)
-	jr		z,.no_src
-	ex		af,af'
-	ld		a,(z_pcm1_src)
-	ld		d,0
-	ld		e,a
-	ex		af,af'
-	ld		(hl),d
-	set_src	pcm1_regs,z_pcm1_source
-.no_src
-	ld		hl,pcm1_bank
-	ld		de,pcm1_abank
-	ldi
-	ld		de,pcm1_addr
-	ldi
-	ldi
-	ld		de,pcm1_left
-	ldi
-	ldi
-	ld		hl,z_pcm_flag
-	set		z_flag_pcm1,(hl)
-	ld		(z_pcm1_key_off),a
-	ld		hl,pcm1_enable
-	ld		(hl),$ca							; change "jp" to "jp z"
-	pop		hl
-	ret
 
-;======================================================================
-; PCM1 disabled - clear back buffer
-;----------------------------------------------------------------------
-pcm1_disabled
-	ld		hl,z_pcm_flag
+;-------------------------------------------; 27 + 20 = 47
+m2_pcm1_disabled
 
-	res		z_flag_pcm1,(hl)
-	fast_poll												;POLL 3
-	ld		b,8
-.loop
-	xor		a
-	dup		4
-		ld		(de),a
-		inc		e
+	jp		p,.no_keyoff					; 10
+
+; special case if key off was triggered by setting volume to
+; e0-ff
+	and		$1f
+	ld		a,(z_pcm1_vol)
+
+.no_keyoff
+	ld		bc,$0201						; 10
+	out_dac
+
+;-------------------------------------------; 40
+	ld		a,$c3							; 7
+	ld		(m2_pcm1_enable),a				; 13
+	ld		d,iyh							; 8
+	ld		e,iyl							; 8
+	xor		a								; 4
+
+;-------------------------------------------; 40 + 88 = 128
+	dup		8
+		inc		e								; 4
+		ld		(de),a							; 7
 	edup
-	fast_poll												;POLL 4-11
-	djnz	.loop
-	jp		pcm2_main
+
+;-------------------------------------------; 128 + 6 = 134
+	dec		bc								; 6
+	out_dac
+
+;-------------------------------------------; 18
+	ld		a,0								; 7
+	inc		e								; 4
+	ld		(de),a							; 7				;9th
+
+;-------------------------------------------; 18 + 114 = 132
+.loop
+	xor		a								; 4
+	dup		10								; (110)
+		inc		e								; 4
+		ld		(de),a							; 7
+	edup
+	out_dac
+
+;-------------------------------------------; 15
+	ld		a,0								; 7
+	djnz	.loop							; 13/8 (-> 20 + 114 = 134)
+
+;-------------------------------------------; 15 + 43 = 58
+	dup		3								; (33)
+		inc		e								; 4
+		ld		(de),a							; 7
+	edup
+	jp		m2_pcm2_bank					; 10
 
 ;======================================================================
-; PCM2 key on
+; Initialize PCM 1 sample playback
 ;----------------------------------------------------------------------
-pcm2_key_on
+m2_pcm1_key_on
+;-------------------------------------------; 111 + 18 = 129
+	ld		(hl),a							; 7
+	out_dac_slow
+
+;-------------------------------------------; 40
+	ld		hl,m2_pcm1_bank_num				; 10
+	ld		a,(z_pcm1_bank)					; 13
+	cp		(hl)							; 7
+	jp		z,.no_bank_switch				; 10
+
+;-------------------------------------------; 40 + ???
+	ld		(hl),a							; 7
+	write_bank_start_bc m2_pcm1_bank		; 21
+	call	write_bank						; 230
+
+.no_bank_switch
+;-------------------------------------------; 40 + ???
+	ld		a,(z_pcm1_pitch)				; 13
+m2_pcm1_pitch		equ		$+1
+	cp		$00								; 7
+	jp		z,.no_pitch_change				; 10
+	ld		(m2_pcm1_pitch),a				; 13
+
+	add		a								; 4
+	add		a								; 4
+	add		a								; 4
+	add		low(pitch_update_fill-8)		; 7
+	ld		h,high(pitch_update_fill)		; 7
+	ld		l,a								; 4
+
+	ldib	m2_pcm1_pit0					; 24
+	ldib	m2_pcm1_pit1					; 24
+	ldib	m2_pcm1_pit2					; 24
+	ldib	m2_pcm1_pit3					; 24
+	ldib	m2_pcm1_pit4					; 24
+	ldib	m2_pcm1_pit5					; 24
+	ldib	m2_pcm1_pit6					; 24
+	ldib	m2_pcm1_pit7					; 24
+
+.no_pitch_change
+	out_dac_slow
+
+;-------------------------------------------; ???
+	ld		hl,z_pcm1_addr					; 10
+
+	ldiw	m2_pcm1_addr					; 42
+	ldiw	m2_pcm1_count					; 42
+	ld		a,$fa							; 7		; jp m,**
+	ld		(m2_pcm1_enable),a				; 13
+	xor		a								; 4
+	ret										; 16
+
+;======================================================================
+; Initialize PCM 2 sample playback
+;----------------------------------------------------------------------
+m2_pcm2_key_on
+;-------------------------------------------; 132 + ...
 	ld		(hl),a
-	push	hl
-	ld		hl,z_pcm2_source
-	cp		(hl)
-	jr		z,.no_src
-	ex		af,af'
-	ld		a,(z_pcm2_src)
-	ld		d,0
-	ld		e,a
-	ex		af,af'
-	ld		(hl),d
-	set_src	pcm2_regs,z_pcm2_source
-.no_src
-	ld		hl,pcm2_bank
-	ld		de,pcm2_abank
-	ldi
-	ld		de,pcm2_addr
-	ldi
-	ldi
-	ld		de,pcm2_left
-	ldi
-	ldi
-	ld		hl,z_pcm_flag
-	set		z_flag_pcm2,(hl)
-	ld		(z_pcm2_key_off),a
-	ld		hl,pcm2_enable
-	ld		(hl),$ca							; change "jp" to "jp z"
-	pop		hl
+	out_dac_slow
+
+;-------------------------------------------; 40
+	ld		hl,m2_pcm2_bank_num				; 10
+	ld		a,(z_pcm2_bank)					; 13
+	cp		(hl)							; 7
+	jp		z,.no_bank_switch				; 10
+
+;-------------------------------------------; 40 + ???
+	ld		(hl),a							; 7
+	write_bank_start_bc m2_pcm2_bank		; 21
+	call	write_bank						; 230
+
+.no_bank_switch
+;-------------------------------------------; 40 + ???
+	ld		a,(z_pcm2_pitch)				; 13
+m2_pcm2_pitch		equ		$+1
+	cp		$00								; 7
+	jp		z,.no_pitch_change				; 10
+	ld		(m2_pcm2_pitch),a				; 13
+
+	add		a								; 4
+	add		a								; 4
+	add		a								; 4
+	add		low(pitch_update_mix-8)		 	; 7
+	ld		h,high(pitch_update_mix)		; 7
+	ld		l,a								; 4
+
+	ldib	m2_pcm2_pit0					; 24
+	ldib	m2_pcm2_pit1					; 24
+	ldib	m2_pcm2_pit2					; 24
+	ldib	m2_pcm2_pit3					; 24
+	ldib	m2_pcm2_pit4					; 24
+	ldib	m2_pcm2_pit5					; 24
+	ldib	m2_pcm2_pit6					; 24
+	ldib	m2_pcm2_pit7					; 24
+
+.no_pitch_change
+	out_dac_slow
+
+;-------------------------------------------; ???
+	ld		hl,z_pcm2_addr					; 10
+
+	ldiw	m2_pcm2_addr					; 42
+	ldiw	m2_pcm2_count					; 42
+	ld		a,$fa							; 7		; jp m,**
+	ld		(m2_pcm2_enable),a				; 13
+	xor		a								; 4
+	ret										; 16
+
+;======================================================================
+; Rewrites bank switch instructions.
+;----------------------------------------------------------------------
+write_bank
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
+	out_dac
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
+	write_bank_ins_bc						; 29
 	ret
 
-	assert		$ <= out_buf1				; Maximum program size
-	assert		user_cmd = $08				; User command trigger
+;======================================================================
+; 3ch mixing main routine
+; Max 201 cycles between writes on average.
+;----------------------------------------------------------------------
+
+m3_init
+	ld		a,$c3							; 7
+	ld		(m3_pcm1_enable),a				; 13
+	ld		a,$c3							; 7
+	ld		(m3_pcm2_enable),a				; 13
+	ld		a,$c3							; 7
+	ld		(m3_pcm3_enable),a				; 13
+	ld		h,high(z_pcm1_key_on)			; 10
+
+m3_key_on
+;-------------------------------------------; = 72 + ??
+	xor		a								; 4
+	ld		(hl),a							; 7
+	ld		l,low(z_pcm1_key_on)			; 7
+	cp		(hl)							; 7
+	call	nz,m3_pcm1_key_on				; 17/10
+
+;-------------------------------------------; = ??
+	ld		l,low(z_pcm2_key_on)			; 7
+	cp		(hl)							; 7
+	call	nz,m3_pcm2_key_on				; 17/10
+
+;-------------------------------------------; = ??
+	ld		l,low(z_pcm3_key_on)			; 7
+	cp		(hl)							; 7
+	call	nz,m3_pcm3_key_on				; 17/10
+
+;--------------------------------------
+; - cycle # at entry:      201 - 179 = 22
+;
+; Update PCM 1
+; - buffer # needed:       11
+;                          1 (if silent)
+; Update PCM 2
+; - buffer # needed:       11
+;                          1 (if silent)
+; Update PCM 3
+; - buffer # needed:       6
+;                          3 (if silent)
+;--------------------------------------
+
+;-------------------------------------------; = 47
+m3_loop
+	ld		a,(z_pcm3_vol)					; 13
+	or		a								; 4
+; replace with "jp m" to start playback
+m3_pcm3_enable		equ		$
+	jp		m3_pcm3_disabled				; 10 (-> 27)
+	ld		b,a								; 4
+	ld		d,iyh							; 8
+	ld		e,iyl							; 8
+
+;-------------------------------------------; = 47 + 101 = 148
+m3_pcm3_bank		equ		$
+	set_bank_fast							; 73
+m3_pcm3_addr		equ		$+1
+	ld		hl,$8000						; 10
+	ld		a,4								; 7
+	ld		ixl,5							; 11
+
+;-------------------------------------------; = 148 + 31 = 179
+m3_pcm3_loop
+m3_pcm3_pit1		equ		$+2
+	inc_read_one							; 31
+	out_dac
+
+;-------------------------------------------; = 155
+m3_pcm3_pit2		equ		$+2
+	inc_read_one							; 31
+m3_pcm3_pit3		equ		$+2
+	inc_read_one							; 31
+m3_pcm3_pit5		equ		$+2
+	inc_read_one							; 31
+m3_pcm3_pit6		equ		$+2
+	inc_read_one							; 31
+m3_pcm3_pit7		equ		$+2
+	inc_read_one							; 31
+
+;-------------------------------------------; = 155 + 18 = 173
+; we can add nops here and shift these instructions to set
+; the sample rate for this channel. this may reduce overall pitch so
+; we do this only for the last PCM channel.
+m3_pcm3_pitx
+	dec		ixl								; 8
+	jp		nz,m3_pcm3_loop					; 10 (-> 173 + 31 = 204)
+
+;-------------------------------------------; = 173 + 22 = 195
+	nop										; 4
+	nop										; 4
+	nop										; 4
+m3_pcm3_count		equ		$+1
+	ld		bc,$0200						; 10
+	out_dac
+
+;-------------------------------------------; = 26
+	bit		7,h								; 8
+	jp		nz,m3_pcm3_nosw					; 10 (-> 18)
+	set		7,h								; 8
+
+;-------------------------------------------; = 26 + 56 = 82
+	push	hl								; 11
+
+m3_pcm3_bank_num	equ		$+1
+	ld		a,$00							; 7
+	inc		a								; 4
+	ld		(m3_pcm3_bank_num),a			; 13
+	write_bank_start_de m3_pcm3_bank		; 21
+
+;-------------------------------------------; = 82 + 116 = 198
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	out_dac_slow
+
+;-------------------------------------------; = 97
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	write_bank_ins_de						; 29
+	pop		hl								; 10
+
+m3_pcm3_nosw
+;-------------------------------------------; = 18 + 55 = 73
+	ld		(m3_pcm3_addr),hl				; 16
+	dec_count m3_pcm3_count,m3_pcm3_enable	; 39
+
+;-------------------------------------------; = 73 + 73 = 146
+m3_pcm1_bank
+	set_bank_fast							; 73
+
+;-------------------------------------------; = 146 + 27 = 173
+	ld		a,(z_pcm1_vol)					; 13
+	or		a								; 4
+m3_pcm1_enable		equ		$
+	jp		m3_pcm1_disabled				; 10 (-> 173)
+
+;-------------------------------------------; = 173 + 24 = 197
+	ld		b,a								; 4
+	ld		d,iyh							; 8
+	ld		e,iyl							; 8
+	ex		de,hl							; 4
+	out_dac
+
+;-------------------------------------------; = 30
+m3_pcm1_addr		equ		$+1
+	ld		de,$8000						; 10
+	ld		ixl,5							; 11
+	nop										; 4
+	nop										; 4
+
+m3_pcm1_loop
+;-------------------------------------------; = 30 + 171 = 201
+m3_pcm1_pit1		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm1_pit2		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm1_pit3		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm1_pit0		equ		$
+	nop										; 4
+	out_dac_slow							; 11
+
+;-------------------------------------------; = 10 + 160 = 170
+m3_pcm1_pit5		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm1_pit6		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm1_pit7		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm1_pit4		equ		$
+	nop										; 4
+
+;-------------------------------------------; = 170 + 18 = 188
+	dec		ixl								; 8
+	jp		z,m3_pcm1_exit					; 10 (->188)
+
+;-------------------------------------------; = 188 + 15 = 203
+;	nop										; 4
+	out_dac_slow							; 11
+
+;-------------------------------------------; = 30/14
+;	ld		(z_dummy),bc					; 20 (does nothing useful)
+	nop										; 4
+	nop										; 8
+	jp		m3_pcm1_loop					; 10
+
+m3_pcm1_exit
+;-------------------------------------------; = 188 + 10 = 198
+m3_pcm1_count		equ		$+1
+	ld		bc,$0200						; 10
+	out_dac
+
+;-------------------------------------------; = 26
+	bit		7,d								; 8
+	jp		nz,m3_pcm1_nosw					; 10 (-> 18)
+	set		7,d								; 8
+
+;-------------------------------------------; = 26 + 56 = 82
+	push	bc								; 11
+
+m3_pcm1_bank_num	equ		$+1
+	ld		a,$00							; 7
+	inc		a								; 4
+	ld		(m3_pcm1_bank_num),a			; 13
+	write_bank_start_bc m3_pcm1_bank		; 21
+
+	call	write_bank						; infinity
+	pop		bc								; 10
+
+m3_pcm1_nosw
+
+;-------------------------------------------; = 18 + 55 = 73
+	ld		(m3_pcm1_addr),de				; 16
+	dec_count m3_pcm1_count,m3_pcm1_enable	; 39
+
+;-------------------------------------------; = 73 + 73 = 146
+m3_pcm2_bank
+	set_bank_fast							; 73
+
+;-------------------------------------------; = 146 + 27 = 173
+	ld		a,(z_pcm2_vol)					; 13
+	or		a								; 4
+m3_pcm2_enable		equ		$
+	jp		m3_pcm2_disabled				; 10 (-> 173)
+
+;-------------------------------------------; = 173 + 24 = 197
+	ld		b,a								; 4
+	ld		d,iyh							; 8
+	ld		e,iyl							; 8
+	ex		de,hl							; 4
+	out_dac
+
+;-------------------------------------------; = 30
+m3_pcm2_addr		equ		$+1
+	ld		de,$8000						; 10
+	ld		ixl,5							; 11
+	nop										; 4
+	nop										; 4
+
+m3_pcm2_loop
+;-------------------------------------------; = 30 + 171 = 201
+m3_pcm2_pit1		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm2_pit2		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm2_pit3		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm2_pit0		equ		$
+	nop										; 4
+	out_dac_slow							; 11
+
+;-------------------------------------------; = 10 + 160 = 170
+m3_pcm2_pit5		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm2_pit6		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm2_pit7		equ		$+2
+	inc_read_mix_one						; 52
+m3_pcm2_pit4		equ		$
+	nop										; 4
+
+;-------------------------------------------; = 170 + 18 = 188
+	dec		ixl								; 8
+	jp		z,m3_pcm2_exit					; 10 (->188)
+
+;-------------------------------------------; = 188 + 15 = 203
+;	nop										; 4  (NB: ROM wait compen.)
+	out_dac_slow							; 11
+
+;-------------------------------------------; = 30/18
+;	ld		(z_dummy),bc					; 20 (does nothing useful)
+	nop										; 8 (NB: ROM wait compen.)
+	nop
+	jp		m3_pcm2_loop					; 10
+
+m3_pcm2_exit
+;-------------------------------------------; = 188 + 10 = 198
+m3_pcm2_count		equ		$+1
+	ld		bc,$0200						; 10
+	out_dac
+
+;-------------------------------------------; = 26
+	bit		7,d								; 8
+	jp		nz,m3_pcm2_nosw					; 10 (-> 18)
+	set		7,d								; 8
+
+;-------------------------------------------; = 26 + 56 = 82
+	push	bc								; 11
+
+m3_pcm2_bank_num	equ		$+1
+	ld		a,$00							; 7
+	inc		a								; 4
+	ld		(m3_pcm2_bank_num),a			; 13
+	write_bank_start_bc m3_pcm2_bank		; 21
+
+	call	write_bank						; infinity
+	pop		bc								; 10
+
+m3_pcm2_nosw
+
+;-------------------------------------------; = 18 + 55 = 73
+	ld		(m3_pcm2_addr),de				; 16
+	dec_count m3_pcm2_count,m3_pcm2_enable	; 39
+
+m3_pcm_done
+;-------------------------------------------; = 73 + 23 = 96
+	ld		a,30							; 7
+	add		a,iyl							; 8
+	ld		iyl,a							; 8
+
+;-------------------------------------------; = 96 + 29 = 125
+	exx										; 4
+	sub		e								; 4
+	exx										; 4
+	ld		hl,z_load						; 10
+	ld		(hl),a							; 7
+
+;-------------------------------------------; = 125 + 30 = 155
+m3_pcm_wait
+	ld		a,(z_min_buffer)				; 13
+	sub		(hl)							; 7
+	jp		c,m3_pcm_bufok					; 10 (-> 155)
+
+;-------------------------------------------; = 155 + 38 = 193
+	xor		a								; 4
+	inc		l								; 4		;z_mode_change
+	cp		(hl)							; 7
+	ret		nz								; 5
+
+	inc		l								; 4		;z_key_on
+	cp		(hl)							; 4
+	jp		nz,m3_key_on					; 10 (-> 72)
+
+;-------------------------------------------; = 193 + 11 = 204
+	out_dac_slow							; 11
+
+;-------------------------------------------; = 10 + 10 = 20
+	jp		m3_loop							; 10
+
+m3_pcm_bufok
+
+;-------------------------------------------; = 155 + 46 = 201
+; Idling while we're waiting to read the buffer
+; TODO: we could do something useful here...
+	push	hl								; 11
+	pop		hl								; 10
+	push	hl								; 11
+	pop		hl								; 10
+	nop										; 4
+	out_dac
+
+;-------------------------------------------; = 94
+	call	burn_31							; 31
+	call	burn_31							; 31
+	push	hl								; 11
+	pop		hl								; 10
+	ld		a,$aa							; 7
+	xor		a								; 4
+
+;-------------------------------------------; = 94 + 31 = 125
+	ld		hl,z_load						; 10
+	dec		(hl)							; 11
+	jp		m3_pcm_wait						; 10
+
+
+;======================================================================
+; Fill sample buffer with silence when PCM 3 is disabled.
+;----------------------------------------------------------------------
+m3_pcm3_disabled	; in: 27   out: 73
+
+;-------------------------------------------; = 27 + 30 = 57
+	jp		p,.no_keyoff					; 10
+	and		$1f
+	ld		a,(z_pcm3_vol)
+.no_keyoff
+	ld		a,$c3							; 7
+	ld		(m3_pcm3_enable),a				; 13
+
+;-------------------------------------------; = 57 + 27 = 84
+	ld		d,iyh							; 8
+	ld		e,iyl							; 8
+	xor		a								; 4
+	ld		b,3								; 7
+
+;-------------------------------------------; = 84+(35*3)-5 = 184
+.loop
+	inc		e								; 4
+	ld		(de),a							; 7
+	inc		e								; 4
+	ld		(de),a							; 7
+	djnz	.loop							; 13  6 samples cleared...
+
+;-------------------------------------------; = 184 + 15 = 199
+	nop										; 4
+	out_dac_slow							; 11
+
+;-------------------------------------------; = 10 + 11 = 21
+	xor		a								; 4
+	ld		b,5								; 7
+
+;-------------------------------------------; = 21+(35*5)-5 = 191
+.loop2
+	inc		e								; 4
+	ld		(de),a							; 7
+	inc		e								; 4
+	ld		(de),a							; 7
+	djnz	.loop2							; 13 16 samples cleared...
+
+;-------------------------------------------; = 191 + 11 = 202
+	out_dac_slow
+
+;-------------------------------------------; = 10 + 11 = 21
+	xor		a								; 4
+	ld		b,5								; 7
+
+;-------------------------------------------; = 21+(35*5)-5 = 191
+.loop3
+	inc		e								; 4
+	ld		(de),a							; 7
+	inc		e								; 4
+	ld		(de),a							; 7
+	djnz	.loop3							; 13 26 samples cleared...
+
+	out_dac_slow
+
+;-------------------------------------------; = 10 + 62 = 68
+	xor		a								; 4
+	dup		4
+		inc		e								; 4
+		ld		(de),a							; 7
+	edup
+	nop										; 4
+	jp		m3_pcm1_bank					; 10
+
+;======================================================================
+; PCM 1 disabled.
+;----------------------------------------------------------------------
+m3_pcm1_disabled	; in: 173  out: 73
+
+;-------------------------------------------; = 173 + 31 = 204
+	jp		p,.no_keyoff					; 10
+	and		$1f
+	ld		a,(z_pcm1_vol)
+.no_keyoff
+	ld		hl,m3_pcm1_enable				; 10
+	out_dac_slow							; 11
+
+;-------------------------------------------; = 10 + 61 = 71
+	ld		a,$c3							; 7
+	ld		(m3_pcm1_enable),a				; 13
+	call	burn_31							; 31
+	jp		m3_pcm2_bank					; 10
+
+;======================================================================
+; PCM 2 disabled. Switch to idle if all channels are off
+;----------------------------------------------------------------------
+m3_pcm2_disabled	; in: 173  out: 73
+
+;-------------------------------------------; = 173 + 31 = 204
+	jp		p,.no_keyoff					; 10
+	and		$1f
+	ld		a,(z_pcm2_vol)
+.no_keyoff
+	ld		hl,m3_pcm3_enable				; 10
+	out_dac_slow
+
+;-------------------------------------------; = 10 + 37 = 47
+	ld		a,$c3							; 7
+	ld		(m3_pcm2_enable),a				; 13
+	cp		(hl)							; 7
+	jp		nz,.no_idle1					; 10 (-> 47)
+
+;-------------------------------------------; = 47 + 27 = 74
+	ld		hl,m3_pcm1_enable				; 10
+	cp		(hl)							; 7
+	jp		nz,m3_pcm_done					; 10
+
+	ld		hl,m3_pcm_done					; 10
+	push	hl								; 11
+	jp		idle_init
+
+;-------------------------------------------; = 47 + 27 = 74
+.no_idle1
+	ld		hl,m3_pcm1_enable				; 10
+	cp		(hl)							; 7
+.done
+	jp		m3_pcm_done						; 10
+
+
+;======================================================================
+; Initialize PCM 1 sample playback
+;----------------------------------------------------------------------
+m3_pcm1_key_on
+;-------------------------------------------; 111 + 18 = 129
+	ld		(hl),a							; 7
+	out_dac_slow
+
+;-------------------------------------------; 40
+	ld		hl,m3_pcm1_bank_num				; 10
+	ld		a,(z_pcm1_bank)					; 13
+	cp		(hl)							; 7
+	jp		z,.no_bank_switch				; 10
+
+;-------------------------------------------; 40 + ???
+	ld		(hl),a							; 7
+	write_bank_start_bc m3_pcm1_bank		; 21
+	call	write_bank						; 230
+
+.no_bank_switch
+;-------------------------------------------; 40 + ???
+	ld		a,(z_pcm1_pitch)				; 13
+m3_pcm1_pitch		equ		$+1
+	cp		$00								; 7
+	jp		z,.no_pitch_change				; 10
+	ld		(m3_pcm1_pitch),a				; 13
+
+	add		a								; 4
+	add		a								; 4
+	add		a								; 4
+	add		low(pitch_update_mix-8)			; 7
+	ld		h,high(pitch_update_mix)		; 7
+	ld		l,a								; 4
+
+	ldib	m3_pcm1_pit0					; 24
+	ldib	m3_pcm1_pit1					; 24
+	ldib	m3_pcm1_pit2					; 24
+	ldib	m3_pcm1_pit3					; 24
+	ldib	m3_pcm1_pit4					; 24
+	ldib	m3_pcm1_pit5					; 24
+	ldib	m3_pcm1_pit6					; 24
+	ldib	m3_pcm1_pit7					; 24
+
+.no_pitch_change
+	out_dac_slow
+
+;-------------------------------------------; ???
+	ld		hl,z_pcm1_addr					; 10
+
+	ldiw	m3_pcm1_addr					; 42
+	ldiw	m3_pcm1_count					; 42
+	ld		a,$fa							; 7		; jp m,**
+	ld		(m3_pcm1_enable),a				; 13
+	xor		a								; 4
+	ret										; 16
+
+;======================================================================
+; Initialize PCM 2 sample playback
+;----------------------------------------------------------------------
+m3_pcm2_key_on
+;-------------------------------------------; 111 + 18 = 129
+	ld		(hl),a							; 7
+	out_dac_slow
+
+;-------------------------------------------; 40
+	ld		hl,m3_pcm2_bank_num				; 10
+	ld		a,(z_pcm2_bank)					; 13
+	cp		(hl)							; 7
+	jp		z,.no_bank_switch				; 10
+
+;-------------------------------------------; 40 + ???
+	ld		(hl),a							; 7
+	write_bank_start_bc m3_pcm2_bank		; 21
+	call	write_bank						; 230
+
+.no_bank_switch
+;-------------------------------------------; 40 + ???
+	ld		a,(z_pcm2_pitch)				; 13
+m3_pcm2_pitch		equ		$+1
+	cp		$00								; 7
+	jp		z,.no_pitch_change				; 10
+	ld		(m3_pcm2_pitch),a				; 13
+
+	add		a								; 4
+	add		a								; 4
+	add		a								; 4
+	add		low(pitch_update_mix-8)			; 7
+	ld		h,high(pitch_update_mix)		; 7
+	ld		l,a								; 4
+
+	ldib	m3_pcm2_pit0					; 24
+	ldib	m3_pcm2_pit1					; 24
+	ldib	m3_pcm2_pit2					; 24
+	ldib	m3_pcm2_pit3					; 24
+	ldib	m3_pcm2_pit4					; 24
+	ldib	m3_pcm2_pit5					; 24
+	ldib	m3_pcm2_pit6					; 24
+	ldib	m3_pcm2_pit7					; 24
+
+.no_pitch_change
+	out_dac_slow
+
+;-------------------------------------------; ???
+	ld		hl,z_pcm2_addr					; 10
+
+	ldiw	m3_pcm2_addr					; 42
+	ldiw	m3_pcm2_count					; 42
+	ld		a,$fa							; 7		; jp m,**
+	ld		(m3_pcm2_enable),a				; 13
+	xor		a								; 4
+	ret										; 16
+
+;======================================================================
+; Initialize PCM 3 sample playback
+;----------------------------------------------------------------------
+m3_pcm3_key_on
+;-------------------------------------------; 111 + 18 = 129
+	ld		(hl),a							; 7
+	out_dac_slow
+
+;-------------------------------------------; 40
+	ld		hl,m3_pcm3_bank_num				; 10
+	ld		a,(z_pcm3_bank)					; 13
+	cp		(hl)							; 7
+	jp		z,.no_bank_switch				; 10
+
+;-------------------------------------------; 40 + ???
+	ld		(hl),a							; 7
+	write_bank_start_bc m3_pcm3_bank		; 21
+	call	write_bank						; 230
+
+.no_bank_switch
+;-------------------------------------------; 40 + ???
+	ld		a,(z_pcm3_pitch)				; 13
+m3_pcm3_pitch		equ		$+1
+	cp		$00								; 7
+	jp		z,.no_pitch_change				; 10
+	ld		(m3_pcm3_pitch),a				; 13
+
+	add		a								; 4
+	add		a								; 4
+	add		a								; 4
+	add		low(pitch_update_fill-8)		; 7
+	ld		h,high(pitch_update_fill)		; 7
+	ld		l,a								; 4
+
+	inc		hl
+	ldib	m3_pcm3_pit1					; 24
+	ldib	m3_pcm3_pit2					; 24
+	ldib	m3_pcm3_pit3					; 24
+	inc		hl
+	ldib	m3_pcm3_pit5					; 24
+	ldib	m3_pcm3_pit6					; 24
+	ldib	m3_pcm3_pit7					; 24
+
+.no_pitch_change
+	out_dac_slow
+
+;-------------------------------------------; ???
+	ld		hl,z_pcm3_addr					; 10
+
+	ldiw	m3_pcm3_addr					; 42
+	ldiw	m3_pcm3_count					; 42
+	ld		a,$fa							; 7		; jp m,**
+	ld		(m3_pcm3_enable),a				; 13
+	xor		a								; 4
+	ret										; 16
+
+	align	256,0
+;======================================================================
+; table of alternating nops and "inc hl" instructions
+pitch_update_fill
+	db		$00,$00,$00,$00,$00,$00,$00,$23		;30
+	db		$00,$00,$00,$23,$00,$00,$00,$23		;38
+	db		$00,$00,$23,$00,$00,$23,$00,$23		;40
+	db		$00,$23,$00,$23,$00,$23,$00,$23		;48
+	db		$00,$23,$00,$23,$00,$23,$23,$23		;50
+	db		$00,$23,$23,$23,$00,$23,$23,$23		;58
+	db		$00,$23,$23,$23,$23,$23,$23,$23		;60
+	db		$23,$23,$23,$23,$23,$23,$23,$23		;68
+
+;======================================================================
+; table of alternating nops and "inc de" instructions
+pitch_update_mix
+	db		$00,$00,$00,$00,$00,$00,$00,$13		;30
+	db		$00,$00,$00,$13,$00,$00,$00,$13		;38
+	db		$00,$00,$13,$00,$00,$13,$00,$13		;40
+	db		$00,$13,$00,$13,$00,$13,$00,$13		;48
+	db		$00,$13,$00,$13,$00,$13,$13,$13		;50
+	db		$00,$13,$13,$13,$00,$13,$13,$13		;58
+	db		$00,$13,$13,$13,$13,$13,$13,$13		;60
+	db		$13,$13,$13,$13,$13,$13,$13,$13		;68
+
 	db		VERSION
 
 ; vim: set ft=z8a sw=4 ts=4 noet:

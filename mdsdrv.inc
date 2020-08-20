@@ -1,7 +1,7 @@
 ;======================================================================
 ; sound driver work memory
 ;======================================================================
-MDSDRV_VER		equ		$0002		; sound driver version
+MDSDRV_VER		equ		$0003		; sound driver version
 
 RCOUNT			equ		4			; request count
 TCOUNT			equ		16			; track count
@@ -45,8 +45,10 @@ cf				equ		0+16
 	rsreset
 nf_ins			rs.b	1			; load new instrument
 nf_sustain		equ		nf_ins		; PSG envelope sustain
+nf_pcm_header	equ		nf_ins		; update PCM header
 nf_vol			rs.b	1			; load new volume
 nf_fm3			rs.b	1			; check fm3 flags
+nf_pcm_pitch	equ		nf_fm3		; update PCM pitch
 nf_pan_lfo		rs.b	1			; load new pan/lfo
 nf_nmode		equ		nf_pan_lfo	; restore PSG noise mode
 nf_slur			rs.b	1			; slur next note
@@ -164,6 +166,16 @@ t_psg_nreset	rs.b	1			; noise reset flag
 t_psg_nmode		rs.b	1			; noise mode
 T_PSGSIZE		rs.b	0
 
+;----------------------------------------------------------------------
+; PCM type
+;----------------------------------------------------------------------
+	rsset		t_type
+t_pcm_pan		rs.b	1			; PCM panning (bit 6-7)...
+t_pcm_pitch		rs.b	1			; PCM pitch
+t_pcm_header	rs.w	1			; pointer to PCM header
+t_pcm_length	rs.w	1			; calculated PCM sample length
+T_PCMSIZE		rs.b	0
+
 ;======================================================================
 ; driver work area
 ;======================================================================
@@ -180,6 +192,9 @@ w_chmask		rs.w	RCOUNT		;channel usage mask
 w_priority		rs.b	1			; priority update flag
 w_comm			rs.b	1			; communication byte
 w_pcm_enable	rs.b	2			;pcm keyon enable
+
+w_pcm_bank		rs.b	1			; pcm bank offset
+w_pcm_mode		rs.b	1			; current pcm mode
 
 w_fm3_mask		rs.b	1			;fm3 keyon operator mask
 w_fm3_alg		rs.b	1
@@ -203,6 +218,9 @@ WSIZE			rs.b	0
 	endif
 	if T_PSGSIZE>TSIZE
 		inform	3,"PSG specific area is too big (%d > %d)",T_PSGSIZE,TSIZE
+	endif
+	if T_PCMSIZE>TSIZE
+		inform	3,"PCM specific area is too big (%d > %d)",T_PCMSIZE,TSIZE
 	endif
 	inform		0,"Sound driver work area size is %d bytes",WSIZE
 

@@ -23,7 +23,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.2 200705"
+	dc.b	"MDSDRV0.3 200824"
 version_str_end
 	even
 
@@ -934,12 +934,7 @@ mds_update_seq
 	st		t_last_pitch(twork)
 	move.b	0(@tbase,@trackpos),@cmd
 	move.b	@cmd,t_psg_nmode(twork)
-	beq.s	@cmd_nmode_settrs
-; TODO: currently force transpose for noise mode to match the ctrmml
-; VGM converter
-	moveq	#12,@cmd
-@cmd_nmode_settrs
-	move.b	@cmd,t_trs(twork)
+	bset	#nf+nf_nmode,flag
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
@@ -1103,8 +1098,13 @@ mds_update_seq
 @cmd_pcm
 	move.b	0(@tbase,@trackpos),@cmd
 	lsl.w	@cmd
-	move.b	1(@tbase,@cmd),t_ins(twork)		; instr address
-	bset	#cf+cf_pcm_control,flag
+	movea.w	0(@tbase,@cmd),tmpa0			; instr address
+	move.w	tmpa0,t_pcm_header(twork)
+	adda.l	a_sdtop,tmpa0
+	move.b	(tmpa0),t_pcm_pitch(twork)		; read sample rate
+	addq	#4,tmpa0
+	move.w	(tmpa0),t_pcm_length(twork)
+	ori.l	#((1<<(cf+cf_pcm_control))|(1<<(nf+nf_pcm_header))|(1<<(nf+nf_pcm_pitch))),flag
 	bra.w	@next_command
 
 ;======================================================================
@@ -1586,6 +1586,23 @@ mds_fm3_update_vol
 	rts
 
 ;======================================================================
+; FM3 special mode set
+;----------------------------------------------------------------------
+; D1 - flag status
+mds_fm3_update_flag
+	and.b	d1,t_op_mask(twork)
+	and.b	d1,w_fm3_mask(work)
+;	move.b	d1,z_fm_reg27(zram)
+;	move.b	#0,z_fm_reg_update(zram)
+	mds_z80_wait_fm
+	move.b	#$27,$4000(zram)
+	andi.b	#$40,d1
+	ori.b	#$15,d1
+	move.b	d1,$4001(zram)
+	mds_z80_start
+	rts
+
+;======================================================================
 ; FM cutoff
 ;----------------------------------------------------------------------
 ; Assumes z80 is stopped and reg $28 is latched
@@ -1631,7 +1648,9 @@ mds_fm6_update
 	beq.s	mds_fm1_update
 
 	clr.b	w_pcm_enable(work)				; send key off if we just
-	mds_z80_cmd0	#zc_pcm1_stop			; switched from PCM to FM
+	mds_z80_wait_req						; switched from PCM to FM
+	ori.b	#$80,z_pcm1_vol(zreq)
+	mds_z80_start
 
 mds_fm1_update
 	bset	#17,chnid						; $4002
@@ -1668,19 +1687,11 @@ mds_fm0_update
 	tst.l	flag
 	bpl.s	@fm3_cut_off
 	pea		@no_key_off(pc)
-
-@set_fm3_flag
-	and.b	d1,t_op_mask(twork)
-	and.b	d1,w_fm3_mask(work)
-	andi.b	#$40,d1
-	ori.b	#$15,d1
-	move.b	d1,z_fm_reg27(zram)
-	move.b	#0,z_fm_reg_update(zram)
-	rts
+	bra.w	mds_fm3_update_flag
 
 @fm3_cut_off
 	clr.b	d1
-	bsr.s	@set_fm3_flag
+	bsr.w	mds_fm3_update_flag
 	bra.w	mds_fm3_cutoff
 
 ;----------------------------------------------------------------------
@@ -2107,7 +2118,7 @@ mds_psgn_update
 	move.w	d0,t_last_pitch(twork)
 	ror.w	#8,d0
 	andi.b	#$07,d0
-	ori.b	#$f0,d0
+	ori.b	#$e0,d0
 	move.b	d0,sound_psg
 	bra.w	mds_update_return
 
@@ -2137,7 +2148,7 @@ mds_dummy_update
 ; PCM1 update
 ;----------------------------------------------------------------------
 mds_pcm1_update
-	moveq	#0,d0							; pcm1 offset
+	move.w	#z_pcm1,d0						; pcm1 offset
 	tst.l	flag
 	bmi.s	@no_disable
 	clr.b	w_pcm_enable(work)
@@ -2172,7 +2183,7 @@ mds_pcm1_update
 ; PCM2 update
 ;----------------------------------------------------------------------
 mds_pcm2_update
-	moveq	#1,d0							; pcm2 offset
+	move.w	#z_pcm2,d0							; pcm2 offset
 	st.b	1+w_pcm_enable(work)
 	tst.l	flag
 	bmi.s	mds_pcm_update
@@ -2201,17 +2212,60 @@ mds_pcm_key_on
 	bclr	#nf+nf_key_off,flag
 	beq.w	mds_update_return
 	bset	#cf+cf_key_on,flag
-	bclr	#nf+nf_vol,flag
-	bclr	#nf+nf_slur,flag	; slur is cleared but not handled
+	andi.l	#~((1<<(nf+nf_vol))|(1<<(nf+nf_slur))),flag
+	bclr	#nf+nf_pcm_header,flag
+	beq.s	@no_update_header
+
+	move.l	a_sdtop,tmpa0
+	adda.w	t_pcm_header(twork),tmpa0
+	move.l	(tmpa0),d1
+	add.l	d1,d1
+	lsr.w	d1
+	ori.w	#$8000,d1
+	lea		zp_addr+2(zram,d0),tmpa0
+	move.w	d1,-(sp)						; push a word
+	mds_z80_wait_req
+	move.b	(sp)+,-(tmpa0)					; pop high byte
+	move.b	d1,-(tmpa0)						; low byte
+	swap	d1
+	add.b	w_pcm_bank(work),d1
+	move.b	d1,-(tmpa0)
+	mds_z80_start
+
+@no_update_header
+	bclr	#nf+nf_pcm_pitch,flag
+	beq.s	@no_update_length
+
+	clr.w	d1
+	move.b	t_pcm_pitch(twork),d1
+	add.b	d1,d1
+	add.b	d1,d1
+	cmpi.b	#3,w_pcm_mode(work)
+	bne.s	@no_mode3
+	add.b	t_pcm_pitch(twork),d1
+@no_mode3
+	move.l	a_sdtop,tmpa0
+	adda.w	t_pcm_header(twork),tmpa0
+	addq	#4,tmpa0
+	move.l	(tmpa0),d2
+	divu.w	d1,d2
+	addi.w	#$1ff,d2
+	lea		zp_count(zram,d0),tmpa0
+	move.w	d2,-(sp)						; push a word
+	mds_z80_wait_req
+	move.b	d2,(tmpa0)+
+	move.b	(sp)+,(tmpa0)
+	mds_z80_start
+
+@no_update_length
 	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
 	sub.b	t_vol(twork),d1
-	move.b	t_ins(twork),d2
-	mds_z80_pcm_start_f	d0,d1,d2
+	mds_z80_pcm_start	d0,d1
 	bra.w	mds_update_return
 
 mds_pcm_key_off
 	bclr	#cf+cf_key_on,flag
-	bclr	#nf+nf_vol,flag
+;	bclr	#nf+nf_vol,flag
 	mds_z80_pcm_stop d0
 	bra.w	mds_update_return
 
@@ -2224,7 +2278,11 @@ mds_pcm_key_off
 ; Upload Z80 program. Assumes Z80 is already stopped
 ;----------------------------------------------------------------------
 mds_z80_init
-	move.l	(a0),-(sp)						;backup work
+	move.l	a2,d0
+	add.l	d0,d0
+	swap	d0
+	move.b	d0,w_pcm_bank(a0)
+	move.b	#2,w_pcm_mode(a0)
 	lea		@z80_driver(pc),a0				;upload Z80 driver
 	lea		z80_ram,a1
 
@@ -2252,33 +2310,6 @@ mds_z80_init
 	cmpi.w	#8,(a0)+						; last entry?
 	bne.s	@next_byte
 
-	lea		z80_ram+z_stab,a1
-	move.l	(sp)+,a0						; get work
-	adda.l	(a0),a0							; get pcm table
-	move.w	(a0)+,d0
-	beq.s	@skip
-	subq.w	#1,d0
-@next_pcm
-	move.l	(a0)+,d1						; get addr
-	add.l	a2,d1
-	lsl.l	#1,d1
-	swap	d1
-	move.b	#0,(a1)+						; bank
-	move.b	d1,(a1)+
-	swap	d1
-	lsr.w	#1,d1
-	ori.w	#$8000,d1
-	move.b	d1,(a1)+						; address
-	ror.w	#8,d1
-	move.b	d1,(a1)+
-	move.w	(a0)+,d1
-	lsr.w	#5,d1							; div by 32
-	addi.w	#$1ff,d1
-	move.b	d1,(a1)+						; length
-	ror.w	#8,d1
-	move.b	d1,(a1)+
-	dbra	d0,@next_pcm
-@skip
 	rts
 
 @z80_driver
