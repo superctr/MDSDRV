@@ -14,10 +14,10 @@ PACK_Z80 = 1
 ; ABI call
 ;----------------------------------------------------------------------
 mds_top
-	bsr.w	mds_init
-	bsr.w	mds_update
-	bsr.w	mds_request
-	bsr.w	mds_command
+	bra.w	mds_init
+	bra.w	mds_update
+	bra.w	mds_request
+	bra.w	mds_command
 
 ;======================================================================
 ; ABI version string
