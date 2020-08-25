@@ -1588,18 +1588,15 @@ mds_fm3_update_vol
 ;======================================================================
 ; FM3 special mode set
 ;----------------------------------------------------------------------
+; Assumes z80 is stopped
 ; D1 - flag status
 mds_fm3_update_flag
 	and.b	d1,t_op_mask(twork)
 	and.b	d1,w_fm3_mask(work)
-;	move.b	d1,z_fm_reg27(zram)
-;	move.b	#0,z_fm_reg_update(zram)
-	mds_z80_wait_fm
 	move.b	#$27,$4000(zram)
 	andi.b	#$40,d1
 	ori.b	#$15,d1
 	move.b	d1,$4001(zram)
-	mds_z80_start
 	rts
 
 ;======================================================================

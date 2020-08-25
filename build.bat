@@ -1,15 +1,16 @@
 @echo off
 rem build with Wine: wine cmd /c build.bat
 echo Make mdsseq.bin and mdspcm.bin ...
-tools\mdslink.exe -o mdsseq.bin mdspcm.bin^
-  "sample/jazzy_nyc_99.mml"^
-  "sample/idk.mds"^
-  "sample/sand_light.mds"^
-  "sample/junkers_high.mds"^
-  "sample/astronomia.mds"^
-  "sample/passport.mds"^
-  "sample/pcmtest2.mds"^
-  "sample/pcmtest.mds"^
+tools\mdslink.exe -o mdsseq.bin mdspcm.bin ^
+  "sample/jazzy_nyc_99.mml" ^
+  "sample/idk.mds" ^
+  "sample/sand_light.mds" ^
+  "sample/junkers_high.mds" ^
+  "sample/midnight.mds" ^
+  "sample/astronomia.mds" ^
+  "sample/passport.mds" ^
+  "sample/pcmtest2.mds" ^
+  "sample/pcmtest.mds" ^
   > error.txt
 if %ERRORLEVEL% neq 0 goto error
 echo Make mdssub.bin ...
