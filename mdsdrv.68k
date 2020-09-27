@@ -23,7 +23,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.3 200824"
+	dc.b	"MDSDRV0.3 200925"
 version_str_end
 	even
 
@@ -124,7 +124,7 @@ mds_init_error
 mds_request
 	ori.w	#(1<<rf_active)+(1<<rf_stop),d0
 	andi.w	#3,d1
-	lsl.w	d1
+	add.w	d1,d1
 	move.w	d0,w_request(a0,d1)
 	rts
 
@@ -142,7 +142,8 @@ mds_request
 mds_command
 	cmpi.b	#@cmd_max,d0					; max command
 	bcc.s	@cmd_dummy
-	lsl.w	#2,d0
+	add.w	d0,d0
+	add.w	d0,d0
 	jmp		@cmd_table(pc,d0)
 @cmd_dummy
 	rts
@@ -176,7 +177,7 @@ mds_command
 ; command 0x02 - get status
 ;----------------------------------------------------------------------
 @get_status
-	lsl.w	#1,d1
+	add.w	d1,d1
 	move.w	w_tmask(a0,d0),d1
 	rts
 
@@ -207,16 +208,19 @@ mds_command
 ;----------------------------------------------------------------------
 @write_fm_port0
 	movem.l	zram/zreq,-(sp)
+	move.w	sr,-(sp)
 	bsr.s	@fm_prepare
 	move.b	d0,$4000(zram)
 	nop
 	nop
 	move.b	d1,$4001(zram)
 	mds_z80_start
+	move.w	(sp)+,sr
 	movem.l	(sp)+,zram/zreq
 	rts
 
 @fm_prepare
+	move.w	#$2700,sr						;disable interrupts
 	lea		z80_bus_request,zreq
 	lea		z80_ram,zram
 	move.w	d1,d0
@@ -229,12 +233,14 @@ mds_command
 ;----------------------------------------------------------------------
 @write_fm_port1
 	movem.l	zram/zreq,-(sp)
+	move	sr,-(sp)
 	bsr.s	@fm_prepare
 	move.b	d0,$4002(zram)
 	nop
 	nop
 	move.b	d1,$4003(zram)
 	mds_z80_start
+	move.w	(sp)+,sr
 	movem.l	(sp)+,zram/zreq
 	rts
 
@@ -443,7 +449,8 @@ mds_handle_request
 	move.w	@zero,w_seq_step(work,rnum)
 	move.w	@zero,w_tmask(work,rnum)
 
-	lsl.w	#2,@reqdata						; request table
+	add.w	@reqdata,@reqdata
+	add.w	@reqdata,@reqdata				; request table
 	adda.l	0(a_sdtop,@reqdata),tmpa0		; location of song header
 
 	move.l	tmpa0,@tbase
@@ -451,7 +458,7 @@ mds_handle_request
 
 	clr.w	@tcount
 	move.b	(tmpa0)+,@tcount				; song volume
-	move.w	@tcount,w_volume(work,rnum)
+;	move.w	@tcount,w_volume(work,rnum)
 
 	move.b	(tmpa0)+,@tcount				; track count
 	subq.b	#1,@tcount
@@ -796,7 +803,7 @@ mds_update_seq
 	move.b	@cmd,t_ins(twork)
 	bset	#nf+nf_key_off,flag
 	bclr	#cf+cf_pcm_control,flag
-	lsl.w	@cmd
+	add.w	@cmd,@cmd
 	movea.w	0(@tbase,@cmd),tmpa0			; instr address
 	move.b	t_channel_id(twork),@cmd
 	cmpi.b	#6,@cmd							; fm or psg
@@ -879,7 +886,7 @@ mds_update_seq
 	move.w	@cmd,t_peg_delay(twork)					;also clears pos
 	move.b	0(@tbase,@trackpos),@cmd
 	beq.s	@cmd_peg_off
-	lsl.w	#1,@cmd
+	add.w	@cmd,@cmd
 	move.w	-2(@tbase,@cmd),t_peg_addr(twork)
 	bra.w	@next_command
 
@@ -1097,12 +1104,12 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_pcm
 	move.b	0(@tbase,@trackpos),@cmd
-	lsl.w	@cmd
+	add.w	@cmd,@cmd
 	movea.w	0(@tbase,@cmd),tmpa0			; instr address
 	move.w	tmpa0,t_pcm_header(twork)
 	adda.l	a_sdtop,tmpa0
 	move.b	(tmpa0),t_pcm_pitch(twork)		; read sample rate
-	addq	#4,tmpa0
+	addq	#6,tmpa0
 	move.w	(tmpa0),t_pcm_length(twork)
 	ori.l	#((1<<(cf+cf_pcm_control))|(1<<(nf+nf_pcm_header))|(1<<(nf+nf_pcm_pitch))),flag
 	bra.w	@next_command
@@ -1485,6 +1492,7 @@ mds_fm_update_vol
 	move.b	mds_fm_vol_table(pc,d3),d3
 
 @no_vol_table
+	add.b	w_volume(work,rnum),d3
 	move.b	t_fm_alg(twork),d4
 	andi.w	#$0007,d4
 
@@ -1498,21 +1506,26 @@ mds_fm_update_vol
 	cmp.b	mds_fm_op_table(pc,d4),d2		; 10+4=14 : 24
 	bcs.s	@modulator						;    10/8 : 32
 	add.b	d3,d0							;       4 : 36
-	bpl.b	@no_overflow					;    10/8 : 44
-	move.b	#$7f,d0							;       8 : 52
-	bra.s	@write_vol						;      10 : 62
-@modulator									;           34
-	cmp.b	*(pc),d0						;  8+4=12 : 46
-@no_overflow								;           46
-	cmp.b	*(pc),d0						;  8+4=12 : 58
-@write_vol									;           58 to 62
-	move.b	d1,0(zram,chnid)				;      14 : 72-76
+	bcs.b	@has_overflow					;    10/8 : 44/46
+	bpl.b	@no_overflow					;    10/8 : 52/54
+@has_overflow								;           46 (fastest)
+	st.b	d0								;       6 : 52
+@no_overflow								;           52 to 54
+	nop										;       4 : 56
+@write_vol									;           56 to 62
+	move.b	d1,0(zram,chnid)				;      14 : 70-74
 	nop										;       4 :  4
 	move.b	d0,1(zram,chnid)				;      14 : 18
 	subq.b	#4,d1							;       4 :  4
 	dbra	d2,@nextop						;   10/14 : 18 (14)
 	swap	chnid
 	rts
+
+; burn cycles because we have nothing better to do
+@modulator									;           34
+	nop										;       4 : 38
+	nop										;       4 : 42
+	bra.s	@no_overflow                    ;      10 : 52
 
 ;======================================================================
 ; FM volume calculation tables
@@ -1709,7 +1722,7 @@ mds_fm0_update
 	beq.s	@no_ins
 
 	move.b	t_ins(twork),d0
-	lsl.w	d0
+	add.w	d0,d0
 	move.l	t_base_addr(twork),tmpa1
 	movea.w	0(tmpa1,d0),tmpa1
 	adda.l	a_sdtop,tmpa1					; ptr. to ins data
@@ -2022,21 +2035,21 @@ mds_psg_update_env
 	move.w	@pos,t_psg_eg_pos(twork)	; write both at the same time
 	bclr	#nf+nf_vol,flag
 
-;----------------------------------------------------------------------
-; It's very likely that this must be rewritten once global volume and
-; fadeout is supported, and the FM->PSG volume conversion could be done
-; at that point.
-;----------------------------------------------------------------------
 @tvol	equr	d1
 @evol	equr	d0
 
 @write_vol
 	moveq	#15,d2
 	move.b	t_vol(twork),@tvol
+	bmi.s	@no_convert
+	move.b	mds_psg_vol_table(pc,d1),d1
+	;bsr.s	mds_psg_convert_vol
+@no_convert
 	not.b	@tvol
 	and.b	d2,@tvol
 	and.b	d2,@evol
 	add.b	@evol,@tvol
+	add.b	1+w_volume(work,rnum),@tvol
 	cmp.b	d2,@tvol
 	bcs.s	@no_clamp
 	move.b	d2,@tvol
@@ -2045,6 +2058,35 @@ mds_psg_update_env
 	or.b	chnid,@tvol
 	move.b	@tvol,sound_psg
 	rts
+
+;======================================================================
+; PCM/PSG volume conversion table
+;======================================================================
+mds_pcm_convert_vol
+mds_psg_convert_vol
+	move.b	mds_psg_vol_table(pc,d1),d1
+	rts
+
+mds_psg_vol_table
+	dcb.b	2,$8f ; 2
+	dcb.b	3,$8f ; 5
+	dcb.b	3,$8e ; 8
+	dcb.b	2,$8d ; 10
+	dcb.b	3,$8c ; 13
+	dcb.b	3,$8b ; 16
+	dcb.b	2,$8a ; 18
+	dcb.b	3,$89 ; 21
+	dcb.b	3,$88 ; 24
+	dcb.b	2,$87 ; 26
+	dcb.b	3,$86 ; 29
+	dcb.b	3,$85 ; 32
+	dcb.b	2,$84 ; 34
+	dcb.b	3,$83 ; 37
+	dcb.b	3,$82 ; 40
+	dcb.b	2,$81 ; 42
+	dcb.b	64-42,$81
+	dcb.b	64,$80
+	even
 
 ;======================================================================
 ; PSG update
@@ -2197,9 +2239,7 @@ mds_pcm_update
 	bne.w	mds_pcm_key_off
 	bclr	#nf+nf_vol,flag
 	beq.s	@no_set_vol
-
-	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
-	sub.b	t_vol(twork),d1
+	mds_z80_get_vol
 	mds_z80_pcm_volume	d0,d1
 
 @no_set_vol
@@ -2241,10 +2281,8 @@ mds_pcm_key_on
 	bne.s	@no_mode3
 	add.b	t_pcm_pitch(twork),d1
 @no_mode3
-	move.l	a_sdtop,tmpa0
-	adda.w	t_pcm_header(twork),tmpa0
-	addq	#4,tmpa0
-	move.l	(tmpa0),d2
+	clr.l	d2
+	move.w	t_pcm_length(twork),d2
 	divu.w	d1,d2
 	addi.w	#$1ff,d2
 	lea		zp_count(zram,d0),tmpa0
@@ -2255,9 +2293,8 @@ mds_pcm_key_on
 	mds_z80_start
 
 @no_update_length
-	move.b	#$9f,d1				; TODO: volume conversion for 00-7f
-	sub.b	t_vol(twork),d1
-	mds_z80_pcm_start	d0,d1
+	mds_z80_get_vol
+	mds_z80_pcm_vol_start	d0,d1
 	bra.w	mds_update_return
 
 mds_pcm_key_off
@@ -2265,6 +2302,8 @@ mds_pcm_key_off
 ;	bclr	#nf+nf_vol,flag
 	mds_z80_pcm_stop d0
 	bra.w	mds_update_return
+
+
 
 ;======================================================================
 ; Z80 access functions

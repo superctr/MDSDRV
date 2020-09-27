@@ -54,7 +54,7 @@ Struct member definitions will be given like this:
 		- `sw` - signed word (16-bits)
 		- `sl` - signed long (32-bits)
 	- `count` The number of elements in an array.
-	- `name` The name of the byte.
+	- `name` The name of the value.
 
 .MDS binary file format
 -----------------------
@@ -482,16 +482,18 @@ rests so it is at least as long as the PSG3 track.
 
 FM voice format
 ---------------
+For each operator-specific parameter, the values are stored in the same
+order as the register addresses.
 
-- `+0 (ub) [0..3]` - DT/MUL
-- `+4 (ub) [0..3]` - KS/AR
-- `+8 (ub) [0..3]` - AM Enable/DR
-- `+12 (ub) [0..3]` - SR
-- `+16 (ub) [0..3]` - SL/RR
-- `+20 (ub) [0..3]` - SSG-EG
-- `+24 (ub) [0..3]` - TL
-- `+28` - FB/ALG
-- `+29` - Transpose
+- `+0 (ub) [0..3]`  - DT/MUL       (30, 34, 38, 3c)
+- `+4 (ub) [0..3]`  - KS/AR        (50, 54, 58, 5c)
+- `+8 (ub) [0..3]`  - AM Enable/DR (60, 64, 68, 6c)
+- `+12 (ub) [0..3]` - SR           (70, 74, 78, 7c)
+- `+16 (ub) [0..3]` - SL/RR        (80, 84, 88, 8c)
+- `+20 (ub) [0..3]` - SSG-EG       (90, 94, 98, 9c)
+- `+24 (ub) [0..3]` - TL           (40, 44, 48, 4c)
+- `+28`             - FB/ALG       (b0)
+- `+29`             - Transpose
 
 The instrument transpose setting works by adjusting the F-num of the
 notes in the scale. Using a lower value makes it possible to use
@@ -511,8 +513,8 @@ always restarted on a key-on.
 - `01` - Sustain current volume until key off
 - `02 dd` - Jump to position dd (counting from beginning of envelope).
 	If key off has been issued, treat this command as `00`.
-- `xy` - Set volume to `y` and wait for `x-1` frames.
-	`x` must be a value between `2` and `f`.
+- `xy` - Set volume to `y` and wait for `x` frames.
+	`x` must be a value between `1` and `f`.
 
 Pitch envelope format
 ---------------------

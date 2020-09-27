@@ -57,6 +57,23 @@ z_pcm_load		equ		z_load
 	if	ASM68K
 
 ;======================================================================
+; PCM volume calculation
+;----------------------------------------------------------------------
+; return volume in d1
+mds_z80_get_vol	macro
+	move.b	t_vol(twork),d1
+	bmi.s	@no_conversion\@
+	bsr.w	mds_pcm_convert_vol
+@no_conversion\@
+	sub.b	1+w_volume(work,rnum),d1
+	bmi.s	@no_clamp\@
+	clr.b	d1
+@no_clamp\@
+	not.b	d1
+	and.b	#$1f,d1
+	endm
+
+;======================================================================
 ; request Z80 bus for sending a request
 ;----------------------------------------------------------------------
 mds_z80_wait_req	macro
@@ -80,7 +97,7 @@ mds_z80_wait_fm		macro
 	beq.s	@done\@
 	move.w	#$0000,(zreq)		; z80 is writing to the FM chip
 	movem.l	d0-d4,-(sp)								; 8+40 : 48
-	movem.l	(sp)+,d0-d4								;      : 96	
+	movem.l	(sp)+,d0-d4								;      : 96
 	bra.s	@stop_z80\@								;   10 : 106
 @done\@
 	endm
@@ -100,11 +117,19 @@ mds_z80_cmd0		macro cmd
 mds_z80_cmd2		macro cmd,arg
 	endm
 
-mds_z80_pcm_start	macro ch,vol
+mds_z80_pcm_vol_start	macro ch,vol
 	mds_z80_wait_req
 	st.b	z_key_on(zram)
 	st.b	zp_key_on(zram,\ch)
 	move.b	\vol,zp_vol(zram,\ch)
+	mds_z80_start
+	endm
+
+mds_z80_pcm_start	macro ch
+	mds_z80_wait_req
+	st.b	z_key_on(zram)
+	st.b	zp_key_on(zram,\ch)
+	andi.b	#$7f,zp_vol(zram,\ch)
 	mds_z80_start
 	endm
 
