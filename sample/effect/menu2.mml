@@ -1,0 +1,13 @@
+#platform mdsdrv
+
+@1 fm 2 6
+ 31   0   7   4   0  23   0   2   0   0
+ 31   0  11   4   0   7   2   1   7   0
+ 31   0   0   0   0  42   1   4   7   0
+ 31   0  10   7   0   0   1   4   0   0
+
+D t150 @1V0p3
+E      @1V0
+
+D l32o6 c<rgr V+20 >c<rgr V+20>c<rgr
+E l32o6 r<p1brp2e V+20 >r<p1brp2e V+20>r<p1brp2e

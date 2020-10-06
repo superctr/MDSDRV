@@ -1,0 +1,5 @@
+#platform mdsdrv
+
+@1 psg 15:2 8:3 0
+
+G t175 @1 v15 o5 l16 a(4a[(2a]6

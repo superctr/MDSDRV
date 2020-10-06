@@ -351,10 +351,6 @@ mds_update_seq_return			equ	*
 	bclr	#nf+nf_enabled,flag
 	bra.s	@do_voice_update
 
-@no_priority
-	st		t_last_pitch(twork)
-	ori.l	#(nm_restore<<nf),flag
-
 ;----------------------------------------------------------------------
 mds_update_return				equ *
 ;----------------------------------------------------------------------
@@ -485,12 +481,12 @@ mds_handle_request
 @use_track
 	move.l	@tbase,t_base_addr(twork)
 
-	move.b	(tmpa0)+,-(sp)					; push channel id
+	move.b	(tmpa0)+,@reqdata				; get channel id
+	move.b	@reqdata,t_channel_id(twork)
+	move.b	rnum,t_request_id(twork)
+
 	move.b	#nm_init,t_note_flag(twork)
 	move.b	(tmpa0)+,t_channel_flag(twork)
-	move.w	(sp)+,@reqdata				; pop channel id in high byte
-	move.b	rnum,@reqdata
-	move.w	@reqdata,t_channel_id(twork)
 
 	move.w	@zero,@tempreg					; allocate track
 	bset	tnum,@tempreg
@@ -517,7 +513,7 @@ mds_handle_request
 	move.w	#$0b0b,t_rest_time(twork)		; default time (-1)
 	move.b	@zero,t_stack_pos(twork)
 
-	cmp.w	#ct_psg<<8,@reqdata
+	cmp.b	#ct_psg,@reqdata
 	bcs.s	@not_psg
 
 ;--------------------------------------
@@ -574,7 +570,7 @@ mds_update_priority
 	move.l	t_note_flag(twork),flag
 	btst	#cf+cf_suspend,flag
 	bne.s	@suspended
-	bmi.s	@voice_not_enabled
+	bpl.s	@voice_not_enabled
 @suspended
 	lea		w_chmask(work),tmpa0			; channel mask
 	move.b	t_channel_id(twork),chnid		; check priority
@@ -2042,8 +2038,8 @@ mds_psg_update_env
 	moveq	#15,d2
 	move.b	t_vol(twork),@tvol
 	bmi.s	@no_convert
-	move.b	mds_psg_vol_table(pc,d1),d1
-	;bsr.s	mds_psg_convert_vol
+	andi.w	#$00ff,@tvol
+	move.b	mds_psg_vol_table(pc,@tvol),@tvol
 @no_convert
 	not.b	@tvol
 	and.b	d2,@tvol

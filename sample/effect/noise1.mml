@@ -1,0 +1,11 @@
+#platform mdsdrv
+
+@1 psg 15 14>0:36
+
+@M1 | -36 -24 -12 0
+
+; When allocating PSG noise for sound effects, and if you use the PSG3
+; frequency mode, you must also allocate PSG3 to prevent a clash.
+
+I v0r2
+J v15 @1 'mode 1' M1 o7c2

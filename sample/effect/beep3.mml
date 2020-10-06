@@ -1,0 +1,6 @@
+#platform mdsdrv
+
+@1 psg 15:2 8 / 7 0
+
+G t150 @1 v15 o4 l32    ceg>c(9<ceg>c(5<ceg>c
+H      @1 v15 o4 l32 K40ceg>c

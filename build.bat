@@ -11,6 +11,18 @@ tools\mdslink.exe -o mdsseq.bin mdspcm.bin ^
   "sample/passport.mds" ^
   "sample/pcmtest2.mds" ^
   "sample/pcmtest.mds" ^
+  "sample/effect/beep1.mml" ^
+  "sample/effect/beep2.mml" ^
+  "sample/effect/beep3.mml" ^
+  "sample/effect/beep4.mml" ^
+  "sample/effect/explosion1.mml" ^
+  "sample/effect/explosion2.mml" ^
+  "sample/effect/explosion3.mml" ^
+  "sample/effect/menu1.mml" ^
+  "sample/effect/menu2.mml" ^
+  "sample/effect/menu3.mml" ^
+  "sample/effect/noise1.mml" ^
+  "sample/effect/noise2.mml" ^
   > error.txt
 if %ERRORLEVEL% neq 0 goto error
 echo Make mdssub.bin ...

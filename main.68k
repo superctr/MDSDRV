@@ -85,11 +85,12 @@ read_input:
 	addq.w	#1,(a0)
 	rts
 @a_pressed	;start track
-	move.w	#6,d0
-	move.w	#$2501,d1
-	bsr		mds_command		;reset pcm rate (optional)
 	move.w	(a0),d0
 	move.w	#3,d1
+	cmpi.w	#10,d0			;playing a sound effect?
+	bcs.s	@not_effect
+	subq.b	#1,d1
+@not_effect
 	lea		r_driver,a0
 	bra		mds_request		;request track
 @b_pressed	;stop track
