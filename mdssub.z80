@@ -32,7 +32,7 @@
 ;	hl', de', bc' - reserved for the PCM playback routine
 ;----------------------------------------------------------------------
 
-	define VERSION "PCM DRIVER V3.0 for MDSDRV"
+	define VERSION "PCM DRIVER V3.1 for MDSDRV"
 
 ASM68K		equ 0
 ASMZ80		equ 0
@@ -206,6 +206,7 @@ out_dac_slow								; in 11 (rst $08), out 10
 	ret										; 10
 
 entry2
+	im		1
 	ld		hl,z_busy
 	ld		de,z_busy+1
 	ld		bc,$01ff
@@ -218,7 +219,25 @@ entry2
 	ld		de,z_buffer+$e0
 	ld		bc,$2a80
 	exx
+	jr		entry3
 
+	block	$38-$,0
+
+;======================================================================
+; VBL INTERRUPT
+;----------------------------------------------------------------------
+vbl
+	di										; 4
+	ex		af,af'							; 4
+	ld		a,PCM_MIN_BUFFER				; 7
+	ld		(z_min_buffer),a				; 13
+	ex		af,af'							; 4
+	ret										; 10
+
+;======================================================================
+; MAIN LOOP
+;----------------------------------------------------------------------
+entry3
 	ld		hl,PCM_MIN_BUFFER+(DEFAULT_MODE*256)
 	ld		(z_min_buffer),hl
 
@@ -325,7 +344,7 @@ m2_key_on
 m2_loop
 
 ;--------------------------------------
-; - cycle # at entry:      134 - 47 = 87
+; - cycle # at entry:      134 - 51 = 83
 ;
 ; Update PCM 1
 ; - buffer # needed:       3+8 = 11 (+3 if bank boundary crossed)
@@ -334,12 +353,13 @@ m2_loop
 ; - buffer # needed:       1+16 = 17
 ;--------------------------------------
 
-;-------------------------------------------; = 47
+;-------------------------------------------; = 51
+	ei										; 4
 	ld		a,(z_pcm1_vol)					; 13
 	or		a								; 4
 ; replace with "jp m" to start playback
 m2_pcm1_enable		equ		$
-	jp		m2_pcm1_disabled				; 10 (-> 27)
+	jp		m2_pcm1_disabled				; 10 (-> 31)
 	ld		b,a								; 4
 	ld		d,iyh							; 8
 	ld		e,iyl							; 8
@@ -622,7 +642,7 @@ m2_pcm_bufok
 ; Fill sample buffer with silence when PCM 1 is disabled.
 ;----------------------------------------------------------------------
 
-;-------------------------------------------; 27 + 20 = 47
+;-------------------------------------------; 31 + 20 = 51
 m2_pcm1_disabled
 
 	jp		p,.no_keyoff					; 10
@@ -837,7 +857,7 @@ m3_key_on
 	call	nz,m3_pcm3_key_on				; 17/10
 
 ;--------------------------------------
-; - cycle # at entry:      201 - 179 = 22
+; - cycle # at entry:      201 - 179 = 18
 ;
 ; Update PCM 1
 ; - buffer # needed:       11
@@ -850,8 +870,9 @@ m3_key_on
 ;                          3 (if silent)
 ;--------------------------------------
 
-;-------------------------------------------; = 47
+;-------------------------------------------; = 51
 m3_loop
+	ei										; 4
 	ld		a,(z_pcm3_vol)					; 13
 	or		a								; 4
 ; replace with "jp m" to start playback
@@ -861,7 +882,7 @@ m3_pcm3_enable		equ		$
 	ld		d,iyh							; 8
 	ld		e,iyl							; 8
 
-;-------------------------------------------; = 47 + 101 = 148
+;-------------------------------------------; = 51 + 101 = 152
 m3_pcm3_bank		equ		$
 	set_bank_fast							; 73
 m3_pcm3_addr		equ		$+1
@@ -869,7 +890,7 @@ m3_pcm3_addr		equ		$+1
 	ld		a,4								; 7
 	ld		ixl,5							; 11
 
-;-------------------------------------------; = 148 + 31 = 179
+;-------------------------------------------; = 152 + 31 = 183
 m3_pcm3_loop
 m3_pcm3_pit1		equ		$+2
 	inc_read_one							; 31
@@ -1177,9 +1198,9 @@ m3_pcm_bufok
 ;======================================================================
 ; Fill sample buffer with silence when PCM 3 is disabled.
 ;----------------------------------------------------------------------
-m3_pcm3_disabled	; in: 27   out: 73
+m3_pcm3_disabled	; in: 31   out: 73
 
-;-------------------------------------------; = 27 + 30 = 57
+;-------------------------------------------; = 31 + 30 = 61
 	jp		p,.no_keyoff					; 10
 	and		$1f
 	ld		a,(z_pcm3_vol)
@@ -1187,13 +1208,13 @@ m3_pcm3_disabled	; in: 27   out: 73
 	ld		a,$c3							; 7
 	ld		(m3_pcm3_enable),a				; 13
 
-;-------------------------------------------; = 57 + 27 = 84
+;-------------------------------------------; = 61 + 27 = 88
 	ld		d,iyh							; 8
 	ld		e,iyl							; 8
 	xor		a								; 4
 	ld		b,3								; 7
 
-;-------------------------------------------; = 84+(35*3)-5 = 184
+;-------------------------------------------; = 88+(35*3)-5 = 188
 .loop
 	inc		e								; 4
 	ld		(de),a							; 7
@@ -1201,8 +1222,7 @@ m3_pcm3_disabled	; in: 27   out: 73
 	ld		(de),a							; 7
 	djnz	.loop							; 13  6 samples cleared...
 
-;-------------------------------------------; = 184 + 15 = 199
-	nop										; 4
+;-------------------------------------------; = 188 + 11 = 199
 	out_dac_slow							; 11
 
 ;-------------------------------------------; = 10 + 11 = 21
@@ -1466,7 +1486,7 @@ m3_pcm3_pitch		equ		$+1
 	xor		a								; 4
 	ret										; 16
 
-	align	256,0
+	align	64,0
 ;======================================================================
 ; table of alternating nops and "inc hl" instructions
 pitch_update_fill
