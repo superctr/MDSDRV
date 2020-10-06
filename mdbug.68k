@@ -15,6 +15,12 @@
 ; | +10| PC                                |
 ; +---+------------------------------------+
 ;
+; the "instruction/not" field doesn't actually refer to the type of
+; data that caused the exception, but rather whether the CPU prefetch
+; is accessing the next instruction or preparing for an interrupt.
+;
+; bit 0 of function code is set when reading data, otherwise program.
+;
 ; Other:
 ; +----+-----------------+-----------------+
 ; | SP | 15-8            | 7-0             |
@@ -32,28 +38,25 @@ bug_def		macro
 	endm
 
 bug_tab
-	bug_def	13,5,  d0
-	bug_def	13,20, d1
-	bug_def	14,5,  d2
-	bug_def	14,20, d3
-	bug_def	15,5,  d4
-	bug_def	15,20, d5
-	bug_def	16,5,  d6
-	bug_def	16,20, d7
-	bug_def	 8,5,  a0
-	bug_def	 8,20, a1
-	bug_def	 9,5,  a2
-	bug_def	 9,20, a3
-	bug_def	10,5,  a4
-	bug_def	10,20, a5
-	bug_def	11,5,  a6
-	bug_def	11,20, sp
+	bug_def	11,5,  d0
+	bug_def	11,20, d1
+	bug_def	12,5,  d2
+	bug_def	12,20, d3
+	bug_def	13,5,  d4
+	bug_def	13,20, d5
+	bug_def	14,5,  d6
+	bug_def	14,20, d7
+	bug_def	 6,5,  a0
+	bug_def	 6,20, a1
+	bug_def	 7,5,  a2
+	bug_def	 7,20, a3
+	bug_def	 8,5,  a4
+	bug_def	 8,20, a5
+	bug_def	 9,5,  a6
+	bug_def	 9,20, sp
 bug_tab2
-	bug_def	 6, 20, sr
-	bug_def	 6, 5,  pc
-
-;t_bug		dc.b	"Dammit, ctr fucked up again!",0
-t_bug		dc.b	"Sluta knulla mig i arselet!!",0
+	bug_def	 4, 20, sr
+	bug_def	 4, 5,  pc
 
 ;                    2345678901234567890123456789
 t_exception dc.b	"",0
@@ -121,20 +124,28 @@ bug
 bug1
 	move	#$2700,sr
 
+	lea		sound_psg,a0
+	move.b	#$9f,(a0)						; mute psg
+	move.b	#$bf,(a0)
+	move.b	#$df,(a0)
+	move.b	#$ff,(a0)
+
+	move.w	#$100,z80_reset
+	move.w	#$100,z80_bus_request
+
 	bsr.w	vdp_init
+	move.w	#$000,z80_reset
+
 	move.l	a7,a5				;pointer to exception frame
 
-	move.w	#vram_plane_a+(2<<7)|(5<<1), d0
-	bsr.w	vdp_pos
-	lea		t_bug(pc),a0
-	moveq	#35,d1
-	bsr.w	vdp_print
-
-	move.w	#vram_plane_a+(4<<7)|(5<<1), d0
+	move.w	#vram_plane_a+(2<<7)|(6<<1), d0
 	bsr.w	vdp_pos
 	move.l	a6,a0
 	moveq	#35,d1
 	bsr.w	vdp_print
+
+	move.w	#$100,z80_reset
+	move.w	#$000,z80_bus_request
 
 	; print registers
 	lea		bug_tab(pc),a0
@@ -148,13 +159,13 @@ bug1
 	beq		@skip_address
 
 	; print access type
-	move.w	#vram_plane_a+(18<<7)|(5<<1), d0
+	move.w	#vram_plane_a+(16<<7)|(5<<1), d0
 	bsr.w	vdp_pos
 	move.w	(a5)+,d3
 	moveq.l	#@access_size,d4
 	move.w	d4,d0			;write/read
 	move.w	d4,d1
-	btst	#3,d3
+	btst	#4,d3
 	bne.s	@is_read
 	clr.w	d0
 
@@ -163,7 +174,7 @@ bug1
 	bsr.w 	vdp_print
 	move.w	d4,d0			;data/code
 	move.w	d4,d1
-	btst	#4,d3
+	btst	#0,d3
 	beq.s	@is_code
 	clr.w	d0
 
@@ -201,6 +212,7 @@ bug1
 
 @access_size	equ		@reading_text-@writing_text
 
+
 ;======================================================================
 ; Memory viewer.
 ;  up    = address-$10
@@ -212,10 +224,10 @@ bug1
 bug_memory_viewer
 	bsr.w	pad_init
 	clr.w	d6
-	
+
 @update
-	move.w	#vram_plane_a+(20<<7)|(1<<1), d5
-	move.w	#5,d4				; draw $60 bytes
+	move.w	#vram_plane_a+(18<<7)|(1<<1), d5
+	move.w	#7,d4				; draw $80 bytes
 	clr.w	d1
 
 @row_loop
@@ -264,11 +276,11 @@ bug_memory_viewer
 @up_pressed
 	subi.w	#$20,a5				; minus $10
 @down_pressed
-	subi.w	#$50,a5				; plus  $10
+	subi.w	#$70,a5				; plus  $10
 	bra.w	@update
 
 @left_pressed
-	subi.w	#$c0,a5				; minus $60
+	subi.w	#$100,a5			; minus $80
 @right_pressed
 	bra.w	@update
 
