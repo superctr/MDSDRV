@@ -23,7 +23,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.3 200925"
+	dc.b	"MDSDRV0.3 201006"
 version_str_end
 	even
 
@@ -584,6 +584,21 @@ mds_update_priority
 	endr
 @has_priority
 	bclr	#cf_background,t_channel_flag(twork)
+	beq.s	@voice_not_enabled
+;--------------------------------------
+; Mask out a pending key on flag if a drum-enabled track is restored
+; (no off beat drums please)
+;--------------------------------------
+	btst	#cf_drum_mode,t_channel_flag(twork)
+	bne.s	@always_mask
+;--------------------------------------
+; Mask out a pending key on flag if a duration less than a 16th note
+; is remaining until the next event.
+;--------------------------------------
+	cmpi.b	#5,t_counter(twork)
+	bcc.s	@voice_not_enabled
+@always_mask
+	bclr	#nf_key_on,t_note_flag(twork)
 	bra.s	@voice_not_enabled
 @no_priority
 	st		t_last_pitch(twork)
