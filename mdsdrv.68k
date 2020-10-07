@@ -291,7 +291,6 @@ mds_command
 	beq.s	@pause_skip_track
 	ori.b	#cm_pause,t_channel_flag(a1)
 	bra.s	@pause_skip_track
-
 @resume
 	bclr	#cf_suspend,t_channel_flag(a1)
 	beq.s	@pause_skip_track
@@ -421,7 +420,7 @@ mds_update_seq_return			equ	*
 	dbra	d5,mds_update_seq
 
 	btst	#cf+cf_background,flag			; skip voice update if bg
-	bne.s	mds_update_return
+	bne.s	@no_priority
 
 	move.b	t_channel_id(twork),chnid
 	btst	#cf+cf_stop,flag
@@ -440,11 +439,20 @@ mds_update_seq_return			equ	*
 ; (this is the most unlikely code path)
 ;----------------------------------------------------------------------
 @stop_track
-	bclr	#cf+cf_stop,flag
-	bset	#nf+nf_fm3,flag
-	bset	#nf+nf_key_off,flag
-	bclr	#nf+nf_enabled,flag
+	swap	flag
+	ori.w	#(($100<<nf_fm3)|($100<<nf_key_off)),flag
+	andi.w	#~(($100<<nf_enabled)|($01<<cf_stop))&$ffff,flag
+	swap	flag
 	bra.s	@do_voice_update
+
+;----------------------------------------------------------------------
+; if the track is running in the background it should still be possible
+; to pause using the cf_stop flag
+;----------------------------------------------------------------------
+@no_priority
+	bclr	#cf+cf_stop,flag
+	beq.s	mds_update_return
+	bclr	#nf+nf_enabled,flag
 
 ;----------------------------------------------------------------------
 mds_update_return				equ *

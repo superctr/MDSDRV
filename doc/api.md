@@ -135,5 +135,5 @@ These are currently all the possible command numbers for `mds_command`.
 - **Command** `0x0B`
 - **Description**: Sets the song volume of the tracks with the priority
 	level specified in `d1`. Set the new volume in `d2`. 0 is the
-	maximum volume, and 127 is the lowest vollume. The attenuation is
+	maximum volume, and 127 is the lowest volume. The attenuation is
 	-0.75 dB per step.
