@@ -7,7 +7,9 @@ r_intcnt		rs.w	1			; Vint counter
 r_pcount0		rs.w	1			; VDP counter at beginning of sound driver
 r_pcount1		rs.w	1			; VDP counter at end of sound driver
 r_z80_load		rs.w	1			; Z80 load
-				rs.w	3
+r_pause			rs.b	1			; pause flag
+r_attenuate		rs.b	1			; attenuate flag
+				rs.w	2
 
 r_driver		rs.w	WSIZE		; sound driver
 

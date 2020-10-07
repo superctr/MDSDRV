@@ -51,11 +51,13 @@ Functions
 	- `a0` - Pointer to work area in RAM.
 	- `d0` - Command number.
 	- `d1` - Command parameter (if applicable).
+	- `d2` - Command parameter (if command number > `0x09`)
 - **Output**:
 	- `a0` - Return value (if applicable)
 	- `d0` - Return value (if applicable)
 - **Trashes**:
 	- `a0-a1`, `d0-d1`.
+	- Command numbers >= `0x09` will also trash `d2`.
 
 #### Command numbers:
 These are currently all the possible command numbers for `mds_command`.
@@ -114,6 +116,24 @@ These are currently all the possible command numbers for `mds_command`.
 	If bit 7 of `d1` is set, the music will be stopped after the fade
 	is complete.
 
-	Bits 0-6 of `d1` set the target volume level. 0 is the maximum
+	Bits 0-6 of `d1` sets the target volume level. 0 is the maximum
 	volume, and 127 is the lowest volume. The attenuation is -0.75 dB
 	per step.
+
+##### `set_pause`
+- **Command** `0x09`
+- **Description**: Pauses or resumes the tracks with the priority
+	level specified in `d1`. Set `d2` to non-zero to pause, and zero
+	to resume.
+
+##### `get_volume`
+- **Command** `0x0A`
+- **Description**: Returns in `d0` the current song volume for the
+	priority level specified in `d1`.
+
+##### `set_volume`
+- **Command** `0x0B`
+- **Description**: Sets the song volume of the tracks with the priority
+	level specified in `d1`. Set the new volume in `d2`. 0 is the
+	maximum volume, and 127 is the lowest vollume. The attenuation is
+	-0.75 dB per step.

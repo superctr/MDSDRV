@@ -76,8 +76,8 @@ read_input:
 	bne.s	@x_pressed
 	btst	#joy_bit_y,d0
 	bne.s	@y_pressed
-;	btst	#joy_bit_z,d0
-;	bne.s	@z_pressed
+	btst	#joy_bit_z,d0
+	bne.s	@z_pressed
 ;	btst	#joy_bit_start,d0
 ;	bne		@start_pressed
 @exit
@@ -98,7 +98,10 @@ read_input:
 	cmpi.w	#10,d0			;playing a sound effect?
 	bcs.s	@not_effect
 	subq.b	#1,d1
+	bra.s	@not_music
 @not_effect
+	clr.b	r_pause
+@not_music
 	lea		r_driver,a0
 	bra		mds_request		;request track
 @b_pressed	;stop track
@@ -119,6 +122,13 @@ read_input:
 @y_pressed	;stop attenuate
 	move.w	#$0008,d0		;start fade
 	move.w	#$0300,d1		;fade rate & target
+	lea		r_driver,a0
+	bra		mds_command
+@z_pressed	;pause on/off
+	eor.b	#$ff,r_pause
+	move.w	#$0009,d0
+	move.w	#$0003,d1
+	move.b	r_pause,d2
 	lea		r_driver,a0
 	bra		mds_command
 

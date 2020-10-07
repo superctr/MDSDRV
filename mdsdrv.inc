@@ -76,6 +76,7 @@ cf_key_on		rs.b	1			; channel is currently playing
 ;======================================================================
 nm_init			equ		((1<<nf_ins)|(1<<nf_pan_lfo)|(1<<nf_enabled))
 nm_restore		equ		((1<<nf_key_off)|(1<<nf_ins)|(1<<nf_vol)|(1<<nf_pan_lfo)|(1<<nf_fm3))
+cm_pause		equ		((1<<cf_suspend)|(1<<cf_stop))
 
 ;======================================================================
 ; channel type
@@ -238,6 +239,15 @@ WSIZE			rs.b	0
 
 break	macro
 		clr.w	$ff0000
+		endm
+
+mds_di	macro								; disable interrupts
+		move	sr,-(sp)
+		move	#$2700,sr
+		endm
+
+mds_ei	macro								; enable interrupts
+		move	(sp)+,sr
 		endm
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:

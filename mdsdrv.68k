@@ -134,11 +134,14 @@ mds_request
 ; INPUT
 ;	a0 - pointer to work area
 ;	d0 - command #
-;	d1 - command parameters
+;	d1 - command parameter
+;	d2 - second command parameter (command number >= 0x09)
 ; OUTPUT
-;   d0 - return value (if used)
+;	a0 - pointer to version string (command 0x03 only)
+;	d0 - return value (if used)
 ; TRASHES
 ;	a0,a1,d0,d1
+;	d2 (command number >= 0x09)
 mds_command
 	cmpi.b	#@cmd_max,d0					; max command
 	bcc.s	@cmd_dummy
@@ -157,6 +160,9 @@ mds_command
 	bra.w	@write_fm_port0
 	bra.w	@write_fm_port1
 	bra.w	@fade_bgm
+	bra.w	@set_pause
+	bra.w	@get_volume
+	bra.w	@set_volume
 @cmd_max	equ (*-@cmd_table)/4
 
 ;----------------------------------------------------------------------
@@ -249,23 +255,88 @@ mds_command
 ; command 0x08 - fade out BGM
 ;----------------------------------------------------------------------
 @fade_bgm
-	move	sr,-(sp)
-	move	#$2700,sr						;disable interrupts
-	bclr	#pe_fade_stop,w_pcm_mode(work)
+	mds_di
+	bclr	#pe_fade_stop,w_pcm_mode(a0)
 	move.b	d1,d0							; get fade target
 	bpl.s	@no_stop
-	bset	#pe_fade_stop,w_pcm_mode(work)
+	bset	#pe_fade_stop,w_pcm_mode(a0)
 @no_stop
 	andi.b	#$7f,d0
 	lsr.w	#8,d1							; get fade rate
-	move.b	@fade_rate_table(pc,d1),w_fade_rate(work)
+	move.b	@fade_rate_table(pc,d1),w_fade_rate(a0)
 
-	move.b	d0,w_fade_target(work)
-	move	(sp)+,sr
+	move.b	d0,w_fade_target(a0)
+	mds_ei
 	rts
 
 @fade_rate_table
 	dc.b	$01,$11,$49,$55,$57,$77,$7f,$ff
+
+;----------------------------------------------------------------------
+; command 0x09 - set pause
+;----------------------------------------------------------------------
+@set_pause
+	mds_di
+	add.w	d1,d1
+	move.w	w_tmask(a0,d1),d0
+	lea		w_track(a0),a1					; first track's addr
+	move.w	#TCOUNT-1,d1
+
+@pause_next_track
+	btst	d1,d0
+	beq.s	@pause_skip_track
+	tst.w	d2								; non-zero to pause
+	beq.s	@resume							; zero to resume
+	btst	#nf_enabled,t_note_flag(a1)
+	beq.s	@pause_skip_track
+	ori.b	#cm_pause,t_channel_flag(a1)
+	bra.s	@pause_skip_track
+
+@resume
+	bclr	#cf_suspend,t_channel_flag(a1)
+	beq.s	@pause_skip_track
+	ori.b	#nm_init|nm_restore,t_note_flag(a1)
+@pause_skip_track
+	lea		TSIZE(a1),a1					; next track
+	dbra	d1,@pause_next_track
+	mds_ei
+	rts
+
+;----------------------------------------------------------------------
+; command 0x0a - get song volume
+;----------------------------------------------------------------------
+@get_volume
+	clr.w	d0
+	add.w	d1,d1
+	move.b	w_volume(a0,d1),d0
+	rts
+
+;----------------------------------------------------------------------
+; command 0x0b - set song volume
+;----------------------------------------------------------------------
+@set_volume
+	mds_di
+	add.w	d1,d1
+	exg		d1,d2
+	move.b	d1,w_volume(a0,d2)
+	bsr.w	mds_psg_convert_vol
+	move.b	d1,1+w_volume(a0,d2)
+
+	move.w	w_tmask(a0,d2),d0
+	lea		w_track(a0),a1					; first track's addr
+	move.w	#TCOUNT-1,d1
+
+@volume_next_track
+	btst	d1,d0
+	beq.s	@volume_skip_track
+
+	bset	#nf_vol,t_note_flag(a1)
+
+@volume_skip_track
+	lea		TSIZE(a1),a1					; next track
+	dbra	d1,@volume_next_track
+	mds_ei
+	rts
 
 ;======================================================================
 ; update sound driver
@@ -652,9 +723,9 @@ mds_update_fade
 	bpl.w	mds_update_priority_return
 
 	move.b	w_fade_rate(work),d0
-	move.b	w_fade_target(work),d3
-
+	clr.w	d1
 	move.b	w_volume+6(work),d2
+	move.b	w_fade_target(work),d3
 
 	cmp.b	d2,d3
 	scs.b	d0								; 0xff if vol < target
@@ -681,18 +752,19 @@ mds_update_fade
 	sub.b	d1,d0
 	move.b	d0,w_volume+7(work)
 
+	move.w	w_tmask+6(work),d0
 	lea		w_track(work),twork				; first track's addr
 	move.w	#TCOUNT-1,tnum
 
-@next_voice
-	cmpi.b	#6,t_request_id(twork)			; skip track if not BGM
-	bne.s	@skip_voice
+@next_track
+	btst	tnum,d0
+	beq.s	@skip_track
 
 	bset	#nf_vol,t_note_flag(twork)
 
-@skip_voice
+@skip_track
 	lea		TSIZE(twork),twork				; next track
-	dbra	tnum,@next_voice
+	dbra	tnum,@next_track
 	bra.w	mds_update_priority_return
 
 ;======================================================================
@@ -1704,7 +1776,10 @@ mds_fm3_update_vol
 ; Assumes z80 is stopped
 ; D1 - flag status
 mds_fm3_update_flag
+	btst	#cf+cf_suspend,flag				; don't clear flags when
+	bne.s	@paused							; paused...
 	and.b	d1,t_op_mask(twork)
+@paused
 	and.b	d1,w_fm3_mask(work)
 	move.b	#$27,$4000(zram)
 	andi.b	#$40,d1
