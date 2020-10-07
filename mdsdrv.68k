@@ -66,7 +66,7 @@ mds_init
 	move.l	@zero,2+w_tmask(a0)
 	move.l	@zero,w_chmask(a0)				; clear chmask
 	move.l	@zero,2+w_chmask(a0)
-	move.w	@zero,w_pcm_enable(a0)			; clear pcm
+	move.l	@zero,w_priority(a0)			; clear priority/fade
 	move.w	@zero,w_fm3_mask(a0)			; clear fm3mask
 	move.l	@zero,w_fm3_tl(a0)
 
@@ -1665,10 +1665,10 @@ mds_fm3_cutoff
 mds_fm6_update
 	btst	#cf+cf_pcm_control,flag
 	bne.w	mds_pcm1_update
-	tst.b	w_pcm_enable(work)
-	beq.s	mds_fm1_update
+	tst.b	w_pcm_mode(work)
+	bpl.s	mds_fm1_update
 
-	clr.b	w_pcm_enable(work)				; send key off if we just
+	bclr	#pe_pcm1,w_pcm_mode(work)		; send key off if we just
 	mds_z80_wait_req						; switched from PCM to FM
 	ori.b	#$80,z_pcm1_vol(zreq)
 	mds_z80_start
@@ -2186,7 +2186,7 @@ mds_dummy_update
 @no_fm3
 	btst	#cf+cf_pcm_control,flag
 	bne.w	mds_pcm2_update
-	tst.b	1+w_pcm_enable(work)
+	bclr	#pe_pcm2,w_pcm_mode(work)
 	beq.s	@no_pcm
 
 	mds_z80_pcm_stop_i	1
@@ -2201,14 +2201,13 @@ mds_pcm1_update
 	move.w	#z_pcm1,d0						; pcm1 offset
 	tst.l	flag
 	bmi.s	@no_disable
-	clr.b	w_pcm_enable(work)
+	bclr	#pe_pcm1,w_pcm_mode(work)
 	bra.w	mds_pcm_key_off
 
 @no_disable
-	tst.b	w_pcm_enable(work)				; send key off if we just
+	bset	#pe_pcm1,w_pcm_mode(work)		; send key off if we just
 	bne.s	@no_fm_key_off					; switched from FM to PCM
 
-	st.b	w_pcm_enable(work)
 	mds_z80_wait_fm
 	move.b	#$28,$4002(zram)
 	nop
@@ -2230,15 +2229,27 @@ mds_pcm1_update
 	bra.s	mds_pcm_update
 
 ;======================================================================
+; PCM3 update
+;----------------------------------------------------------------------
+mds_pcm3_update
+	move.w	#z_pcm3,d0							; pcm3 offset
+	moveq	#pe_pcm3,d1
+	bra.s	mds_pcm_check_flag
+
+;======================================================================
 ; PCM2 update
 ;----------------------------------------------------------------------
 mds_pcm2_update
 	move.w	#z_pcm2,d0							; pcm2 offset
-	st.b	1+w_pcm_enable(work)
+	moveq	#pe_pcm2,d1
+
+;======================================================================
+; Check the enable flag
+;----------------------------------------------------------------------
+mds_pcm_check_flag
 	tst.l	flag
-	bmi.s	mds_pcm_update
-	clr.b	1+w_pcm_enable(work)
-	bra.w	mds_pcm_key_off
+	bpl.w	mds_pcm_key_off_flag
+	bset	d1,w_pcm_mode(work)					; fall through ...
 
 ;======================================================================
 ; PCM common update
@@ -2308,6 +2319,8 @@ mds_pcm_key_on
 	mds_z80_pcm_vol_start	d0,d1
 	bra.w	mds_update_return
 
+mds_pcm_key_off_flag
+	bclr	d1,w_pcm_mode(work)
 mds_pcm_key_off
 	bclr	#cf+cf_key_on,flag
 ;	bclr	#nf+nf_vol,flag

@@ -86,6 +86,13 @@ ct_psg			rs.b	3			; psg melody
 ct_psgn			rs.b	1			; psg noise
 
 ;======================================================================
+; pcm enable flags
+;======================================================================
+pe_pcm1			equ		7
+pe_pcm2			equ		6
+pe_pcm3			equ		5
+
+;======================================================================
 ; track data
 ;======================================================================
 	rsreset
@@ -190,11 +197,14 @@ w_tmask			rs.w	RCOUNT		;track mask
 w_chmask		rs.w	RCOUNT		;channel usage mask
 
 w_priority		rs.b	1			; priority update flag
+w_fade_rate		rs.b	1			; BGM fade rate
+
+w_fade_target	rs.b	1			; BGM fade target
 w_comm			rs.b	1			; communication byte
-w_pcm_enable	rs.b	2			;pcm keyon enable
 
 w_pcm_bank		rs.b	1			; pcm bank offset
-w_pcm_mode		rs.b	1			; current pcm mode
+w_pcm_mode		rs.b	1			; bit 0-3: current pcm mode
+									; bit 5-7: pcm enable flags
 
 w_fm3_mask		rs.b	1			;fm3 keyon operator mask
 w_fm3_alg		rs.b	1
