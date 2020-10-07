@@ -70,6 +70,14 @@ read_input:
 	bne.s	@a_pressed
 	btst	#joy_bit_b,d0
 	bne.s	@b_pressed
+	btst	#joy_bit_c,d0
+	bne.s	@c_pressed
+	btst	#joy_bit_x,d0
+	bne.s	@x_pressed
+	btst	#joy_bit_y,d0
+	bne.s	@y_pressed
+;	btst	#joy_bit_z,d0
+;	bne.s	@z_pressed
 ;	btst	#joy_bit_start,d0
 ;	bne		@start_pressed
 @exit
@@ -98,6 +106,21 @@ read_input:
 	move.w	#3,d1
 	lea		r_driver,a0
 	bra		mds_request
+@c_pressed	;fade out track
+	move.w	#$0008,d0		;start fade
+	move.w	#$01c0,d1		;fade rate & target
+	lea		r_driver,a0
+	bra		mds_command
+@x_pressed	;attenuate
+	move.w	#$0008,d0		;start fade
+	move.w	#$0314,d1		;fade rate & target
+	lea		r_driver,a0
+	bra		mds_command
+@y_pressed	;stop attenuate
+	move.w	#$0008,d0		;start fade
+	move.w	#$0300,d1		;fade rate & target
+	lea		r_driver,a0
+	bra		mds_command
 
 ;====================================================================
 ; Print menu options
@@ -108,7 +131,7 @@ print_options:
 	lea		@plist(pc),a0
 	bsr.w	print_command
 	rts
-	
+
 @plist
 	p_palette	0
 	p_pos		24,11
@@ -129,7 +152,7 @@ print_driver_text:
 	bsr.w	print_next
 	dbra	d7,@loop
 	rts
-	
+
 @plist
 	p_palette	1
 	;			 0123456789abcdef0123456789abcdef0123
@@ -155,7 +178,7 @@ print_driver_values:
 	lea		TSIZE(a1),a1				;next track
 	dbra	d7,@loop
 	rts
-	
+
 @plist
 	p_palette	0
 	p_shift		0,4
@@ -243,7 +266,7 @@ vbl:
 	rte
 hbl:
 	rte
-	
+
 print_track_data_begin
 	p_pos		3,2
 	p_end
@@ -256,6 +279,8 @@ print_instructions
 	p_text		"Up/Down: Select"
 	p_shift		1,-1
 	p_text		"A: Play, B: Stop"
+	p_shift		1,9
+	p_text		"C: Fade"
 ;	p_shift		1,-2
 ;	p_text		"Start: Change info"
 	p_pos		24,6

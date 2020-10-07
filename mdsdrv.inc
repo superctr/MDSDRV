@@ -91,6 +91,7 @@ ct_psgn			rs.b	1			; psg noise
 pe_pcm1			equ		7
 pe_pcm2			equ		6
 pe_pcm3			equ		5
+pe_fade_stop	equ		4
 
 ;======================================================================
 ; track data
@@ -204,6 +205,7 @@ w_comm			rs.b	1			; communication byte
 
 w_pcm_bank		rs.b	1			; pcm bank offset
 w_pcm_mode		rs.b	1			; bit 0-3: current pcm mode
+									; bit 4  : stop track after fade
 									; bit 5-7: pcm enable flags
 
 w_fm3_mask		rs.b	1			;fm3 keyon operator mask

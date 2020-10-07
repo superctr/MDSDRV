@@ -101,3 +101,19 @@ These are currently all the possible command numbers for `mds_command`.
 - **Description**: Writes the data defined in the lower 8 bits of `d1`
 	to the FM port 1 register defined in the upper 8 bits of `d1`.
 	Port 1 contains FM4-FM6 operator registers.
+
+##### `fade_bgm`
+- **Command** `0x08`
+- **Description**: Begins fade out or fade in of the background music
+	(priority level 3).
+
+	The upper 8 bits of `d1` define the fade speed. The valid range
+	is 0 to 7, where 0 causes the volume to be updated every 8 frames,
+	and 7 causes the volume to be updated every frame.
+
+	If bit 7 of `d1` is set, the music will be stopped after the fade
+	is complete.
+
+	Bits 0-6 of `d1` set the target volume level. 0 is the maximum
+	volume, and 127 is the lowest volume. The attenuation is -0.75 dB
+	per step.
