@@ -1,4 +1,5 @@
 #platform mdsdrv
+#group se
 
 @1 psg 15 14>0:36
 

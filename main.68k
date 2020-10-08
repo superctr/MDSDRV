@@ -5,6 +5,7 @@ DEBUG_SCREEN equ 1
 	include "mdsdrv.inc"
 	include "mdsseq.inc"
 	include "main.inc"
+	include "seqlist.inc"
 
 	include "mdinit.68k"
 	include "mdlib.68k"
@@ -95,7 +96,7 @@ read_input:
 @a_pressed	;start track
 	move.w	(a0),d0
 	move.w	#3,d1
-	cmpi.w	#10,d0			;playing a sound effect?
+	cmpi.w	#SE_MIN,d0		;playing a sound effect?
 	bcs.s	@not_effect
 	subq.b	#1,d1
 	bra.s	@not_music

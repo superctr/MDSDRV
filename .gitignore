@@ -10,6 +10,8 @@ mdssub.bin
 mdssub.slz
 mdsseq.bin
 mdspcm.bin
+seqlist.inc
+seqlist.h
 a.exe
 a.out
 error.txt

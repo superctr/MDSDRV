@@ -1,4 +1,5 @@
 #platform mdsdrv
+#group se
 
 @1 psg 0>15:4  12>0:20 0
 

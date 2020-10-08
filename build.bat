@@ -1,7 +1,7 @@
 @echo off
 rem build with Wine: wine cmd /c build.bat
 echo Make mdsseq.bin and mdspcm.bin ...
-tools\mdslink.exe -o mdsseq.bin mdspcm.bin ^
+tools\mdslink.exe -o mdsseq.bin mdspcm.bin -i seqlist.inc -h seqlist.h ^
   "sample/jazzy_nyc_99.mml" ^
   "sample/idk.mds" ^
   "sample/sand_light.mds" ^
