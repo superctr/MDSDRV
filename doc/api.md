@@ -137,3 +137,14 @@ These are currently all the possible command numbers for `mds_command`.
 	level specified in `d1`. Set the new volume in `d2`. 0 is the
 	maximum volume, and 127 is the lowest volume. The attenuation is
 	-0.75 dB per step.
+
+##### `get_tempo`
+- **Command** `0x0C`
+- **Description**: Returns in `d0` the current song tempo for the
+	priority level specified in `d1`.
+
+##### `set_tempo`
+- **Command** `0x0D`
+- **Description**: Sets the song tempo for the priority level specified
+	in `d1` to the value in `d2`.
+

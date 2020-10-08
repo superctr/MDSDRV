@@ -163,6 +163,8 @@ mds_command
 	bra.w	@set_pause
 	bra.w	@get_volume
 	bra.w	@set_volume
+	bra.w	@get_tempo
+	bra.w	@set_tempo
 @cmd_max	equ (*-@cmd_table)/4
 
 ;----------------------------------------------------------------------
@@ -207,7 +209,7 @@ mds_command
 ; command 0x05 - set global tempo
 ;----------------------------------------------------------------------
 @set_gtempo
-	move.w	d0,w_gtempo(a0)
+	move.w	d1,w_gtempo(a0)
 	rts
 
 ;----------------------------------------------------------------------
@@ -318,8 +320,8 @@ mds_command
 	add.w	d1,d1
 	exg		d1,d2
 	move.b	d1,w_volume(a0,d2)
-	bsr.w	mds_psg_convert_vol
-	move.b	d1,1+w_volume(a0,d2)
+	bsr.w	mds_convert_vol
+	move.b	d0,1+w_volume(a0,d2)
 
 	move.w	w_tmask(a0,d2),d0
 	lea		w_track(a0),a1					; first track's addr
@@ -335,6 +337,24 @@ mds_command
 	lea		TSIZE(a1),a1					; next track
 	dbra	d1,@volume_next_track
 	mds_ei
+	rts
+
+;----------------------------------------------------------------------
+; command 0x0c - get song tempo
+;----------------------------------------------------------------------
+@get_tempo
+	clr.w	d0
+	add.w	d1,d1
+	move.w	w_tempo(a0,d1),d0
+	rts
+
+;----------------------------------------------------------------------
+; command 0x0d - set song tempo
+;----------------------------------------------------------------------
+@set_tempo
+	clr.w	d0
+	add.w	d1,d1
+	move.w	d2,w_tempo(a0,d1)
 	rts
 
 ;======================================================================
@@ -755,9 +775,7 @@ mds_update_fade
 
 @not_done
 	move.b	d1,w_volume+6(work)
-	bsr		mds_psg_convert_vol
-	moveq	#-113,d0						; 0x8f
-	sub.b	d1,d0
+	bsr		mds_convert_vol
 	move.b	d0,w_volume+7(work)
 
 	move.w	w_tmask+6(work),d0
@@ -2250,6 +2268,11 @@ mds_psg_update_env
 mds_pcm_convert_vol
 mds_psg_convert_vol
 	move.b	mds_psg_vol_table(pc,d1),d1
+	rts
+
+mds_convert_vol
+	moveq	#-113,d0						; 0x8f
+	sub.b	mds_psg_vol_table(pc,d1),d0
 	rts
 
 mds_psg_vol_table
