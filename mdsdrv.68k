@@ -714,6 +714,14 @@ mds_update_priority
 		bne.s	@no_priority
 		subq.b	#2,d0						; next request
 	endr
+;--------------------------------------
+; If request id is >= RCOUNT*2, then the track was recently stopped
+; and it should not be given priority.
+;--------------------------------------
+	beq.s	@has_priority
+	move.w	(tmpa0)+,d1
+	btst	chnid,d1
+	bne.s	@no_priority
 @has_priority
 	bclr	#cf_background,t_channel_flag(twork)
 	beq.s	@voice_not_enabled

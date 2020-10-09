@@ -1,7 +1,7 @@
 #platform mdsdrv
 #group se
 
-@1 psg 15 14>0:36
+@1 psg 15 14>8:24 7>0:12
 
 @M1 | -36 -24 -12 0
 
