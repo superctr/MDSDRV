@@ -35,6 +35,18 @@ if %ERRORLEVEL% neq 0 goto error
 echo Make mdsdrv.bin ...
 tools\asm68k.exe /k /p /o ae- src\blob.68k, out\mdsdrv.bin >out\error.txt, , out\mdsdrv.lst
 if %ERRORLEVEL% neq 0 goto error
+if "%GDK_WIN%"=="" goto nosgdk
+echo Make sgdk.bin
+copy /b out\mdsdrv.bin sample\sgdk\res
+copy /b out\mdspcm.bin sample\sgdk\res
+copy /b out\mdsseq.bin sample\sgdk\res
+copy out\mdsseq.h sample\sgdk\res
+pushd sample\sgdk
+make clean
+make
+popd
+copy sample\sgdk\out\rom.bin sgdk.bin
+:nosgdk
 echo All done!
 goto eof
 :error

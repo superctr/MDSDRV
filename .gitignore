@@ -1,6 +1,11 @@
 /out/*
+/sample/sgdk/out/*
+/sample/sgdk/res/*.bin
+/sample/sgdk/res/*.h
+/sample/sgdk/src/boot/*
 *.vgm
 *.lst
 main.bin
+sgdk.bin
 *~
 *.swp
