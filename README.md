@@ -114,7 +114,7 @@ try to find a good replacement.
 
 `sjasmplus` is licensed under the zlib license. The version included in
 this repository has been downloaded from the
-[Github repository] (https://github.com/sjasmplus/sjasmplus).
+[Github repository](https://github.com/sjasmplus/sjasmplus).
 
 `slz` is licensed under the zlib license. The version included in this
 repository has been compiled from the source code in the
