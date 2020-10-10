@@ -111,23 +111,23 @@ read_input:
 	lea		r_driver,a0
 	bra		mds_request
 @c_pressed	;fade out track
-	move.w	#$0008,d0		;start fade
+	move.w	#$000a,d0		;start fade
 	move.w	#$01c0,d1		;fade rate & target
 	lea		r_driver,a0
 	bra		mds_command
 @x_pressed	;attenuate
-	move.w	#$0008,d0		;start fade
+	move.w	#$000a,d0		;start fade
 	move.w	#$0314,d1		;fade rate & target
 	lea		r_driver,a0
 	bra		mds_command
 @y_pressed	;stop attenuate
-	move.w	#$0008,d0		;start fade
+	move.w	#$000a,d0		;start fade
 	move.w	#$0300,d1		;fade rate & target
 	lea		r_driver,a0
 	bra		mds_command
 @z_pressed	;pause on/off
 	eor.b	#$ff,r_pause
-	move.w	#$0009,d0
+	move.w	#$000b,d0
 	move.w	#$0003,d1
 	move.b	r_pause,d2
 	lea		r_driver,a0

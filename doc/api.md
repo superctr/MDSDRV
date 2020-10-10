@@ -80,7 +80,9 @@ These are currently all the possible command numbers for `mds_command`.
 ##### `get_version`
 - **Command** `0x03`
 - **Description**: Returns a pointer to the version string in `a0`. The
-	size of the version string (in bytes) is given in `d0`.
+	string is zero-terminated. A hexadecimal representation of the
+	version is returned in `d0`. The length of the version string (in
+	bytes) is given in `d1`.
 
 ##### `get_gtempo`
 - **Command** `0x04`
@@ -92,20 +94,31 @@ These are currently all the possible command numbers for `mds_command`.
 - **Description**: Sets the global tempo to the value in `d1`. Automatic
 	PAL/NTSC adjustment will not be done.
 
-##### `write_fm_port0`
+##### `get_gvolume`
 - **Command** `0x06`
+- **Description**: Returns a 16-bit value in d0 with the initial BGM
+	(request slot 3) in the upper 8 bits and the initial sound effect
+	(request slots 0..2) volume in the lower 8 bits.
+
+##### `set_gvolume`
+- **Command** `0x07`
+- **Description**: Sets the initial volume to the 16-bit value in d0.
+	See `get_gvolume` for more details.
+
+##### `write_fm_port0`
+- **Command** `0x08`
 - **Description**: Writes the data defined in the lower 8 bits of `d1`
 	to the FM port 0 register defined in the upper 8 bits of `d1`.
 	Port 0 contains timer, DAC, key-on and FM1-FM3 operator registers.
 
 ##### `write_fm_port1`
-- **Command** `0x07`
+- **Command** `0x09`
 - **Description**: Writes the data defined in the lower 8 bits of `d1`
 	to the FM port 1 register defined in the upper 8 bits of `d1`.
 	Port 1 contains FM4-FM6 operator registers.
 
 ##### `fade_bgm`
-- **Command** `0x08`
+- **Command** `0x0A`
 - **Description**: Begins fade out or fade in of the background music
 	(priority level 3).
 
@@ -121,30 +134,30 @@ These are currently all the possible command numbers for `mds_command`.
 	per step.
 
 ##### `set_pause`
-- **Command** `0x09`
+- **Command** `0x0B`
 - **Description**: Pauses or resumes the tracks with the priority
 	level specified in `d1`. Set `d2` to non-zero to pause, and zero
 	to resume.
 
 ##### `get_volume`
-- **Command** `0x0A`
+- **Command** `0x0C`
 - **Description**: Returns in `d0` the current song volume for the
 	priority level specified in `d1`.
 
 ##### `set_volume`
-- **Command** `0x0B`
+- **Command** `0x0D`
 - **Description**: Sets the song volume of the tracks with the priority
 	level specified in `d1`. Set the new volume in `d2`. 0 is the
 	maximum volume, and 127 is the lowest volume. The attenuation is
 	-0.75 dB per step.
 
 ##### `get_tempo`
-- **Command** `0x0C`
+- **Command** `0x0E`
 - **Description**: Returns in `d0` the current song tempo for the
 	priority level specified in `d1`.
 
 ##### `set_tempo`
-- **Command** `0x0D`
+- **Command** `0x0F`
 - **Description**: Sets the song tempo for the priority level specified
 	in `d1` to the value in `d2`.
 

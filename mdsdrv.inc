@@ -198,8 +198,16 @@ w_volume		rs.w	RCOUNT		;global volume
 w_tmask			rs.w	RCOUNT		;track mask
 w_chmask		rs.w	RCOUNT		;channel usage mask
 
+;--------------------------------------
+; these bytes are read as a word and should thus
+; always be aligned and grouped together
+;--------------------------------------
+w_bgm_volume	rs.b	1			; initial bgm volume (request 3)
+w_se_volume		rs.b	1			; initial effect volume (0-2)
+
 w_priority		rs.b	1			; priority update flag
 w_fade_rate		rs.b	1			; BGM fade rate
+;--------------------------------------
 
 w_fade_target	rs.b	1			; BGM fade target
 w_comm			rs.b	1			; communication byte

@@ -23,8 +23,9 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.3 201007"
+	dc.b	"MDSDRV0.3 201010"
 version_str_end
+	dc.b	0
 	even
 
 ;======================================================================
@@ -135,13 +136,13 @@ mds_request
 ;	a0 - pointer to work area
 ;	d0 - command #
 ;	d1 - command parameter
-;	d2 - second command parameter (command number >= 0x09)
+;	d2 - second command parameter (command number >= 0x0b)
 ; OUTPUT
 ;	a0 - pointer to version string (command 0x03 only)
 ;	d0 - return value (if used)
 ; TRASHES
 ;	a0,a1,d0,d1
-;	d2 (command number >= 0x09)
+;	d2 (command number >= 0x0b)
 mds_command
 	cmpi.b	#@cmd_max,d0					; max command
 	bcc.s	@cmd_dummy
@@ -151,20 +152,22 @@ mds_command
 @cmd_dummy
 	rts
 @cmd_table
-	bra.w	@get_cmd_count
-	bra.w	@get_sound_count
-	bra.w	@get_status
-	bra.w	@get_version
-	bra.w	@get_gtempo
-	bra.w	@set_gtempo
-	bra.w	@write_fm_port0
-	bra.w	@write_fm_port1
-	bra.w	@fade_bgm
-	bra.w	@set_pause
-	bra.w	@get_volume
-	bra.w	@set_volume
-	bra.w	@get_tempo
-	bra.w	@set_tempo
+	bra.w	@get_cmd_count					; 0x00
+	bra.w	@get_sound_count				; 0x01
+	bra.w	@get_status						; 0x02
+	bra.w	@get_version					; 0x03
+	bra.w	@get_gtempo						; 0x04
+	bra.w	@set_gtempo						; 0x05
+	bra.w	@get_gvolume					; 0x06
+	bra.w	@set_gvolume					; 0x07
+	bra.w	@write_fm_port0					; 0x08
+	bra.w	@write_fm_port1					; 0x09
+	bra.w	@fade_bgm						; 0x0a
+	bra.w	@set_pause						; 0x0b
+	bra.w	@get_volume						; 0x0c
+	bra.w	@set_volume						; 0x0d
+	bra.w	@get_tempo						; 0x0e
+	bra.w	@set_tempo						; 0x0f
 @cmd_max	equ (*-@cmd_table)/4
 
 ;----------------------------------------------------------------------
@@ -187,7 +190,7 @@ mds_command
 ;----------------------------------------------------------------------
 @get_status
 	add.w	d1,d1
-	move.w	w_tmask(a0,d0),d1
+	move.w	w_tmask(a0,d1),d0
 	rts
 
 ;----------------------------------------------------------------------
@@ -195,7 +198,8 @@ mds_command
 ;----------------------------------------------------------------------
 @get_version
 	lea		version_str(pc),a0
-	move.w	#version_str_end-version_str,d0
+	move.w	#MDSDRV_VER,d0
+	move.w	#version_str_end-version_str,d1
 	rts
 
 ;----------------------------------------------------------------------
@@ -213,7 +217,20 @@ mds_command
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x06 - write data to FM port 0
+; command 0x06 - get initial volume
+;----------------------------------------------------------------------
+@get_gvolume
+	move.w	w_bgm_volume(a0),d0
+	rts
+
+;----------------------------------------------------------------------
+; command 0x07 - set initial volume
+;----------------------------------------------------------------------
+@set_gvolume
+	move.w	d1,w_bgm_volume(a0)
+	rts
+;----------------------------------------------------------------------
+; command 0x08 - write data to FM port 0
 ;----------------------------------------------------------------------
 @write_fm_port0
 	movem.l	zram/zreq,-(sp)
@@ -238,7 +255,7 @@ mds_command
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x07 - write data to FM port 1
+; command 0x09 - write data to FM port 1
 ;----------------------------------------------------------------------
 @write_fm_port1
 	movem.l	zram/zreq,-(sp)
@@ -254,7 +271,7 @@ mds_command
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x08 - fade out BGM
+; command 0x0a - fade out BGM
 ;----------------------------------------------------------------------
 @fade_bgm
 	mds_di
@@ -275,7 +292,7 @@ mds_command
 	dc.b	$01,$11,$49,$55,$57,$77,$7f,$ff
 
 ;----------------------------------------------------------------------
-; command 0x09 - set pause
+; command 0x0b - set pause
 ;----------------------------------------------------------------------
 @set_pause
 	mds_di
@@ -304,7 +321,7 @@ mds_command
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x0a - get song volume
+; command 0x0c - get song volume
 ;----------------------------------------------------------------------
 @get_volume
 	clr.w	d0
@@ -313,7 +330,7 @@ mds_command
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x0b - set song volume
+; command 0x0d - set song volume
 ;----------------------------------------------------------------------
 @set_volume
 	mds_di
@@ -340,7 +357,7 @@ mds_command
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x0c - get song tempo
+; command 0x0e - get song tempo
 ;----------------------------------------------------------------------
 @get_tempo
 	clr.w	d0
@@ -349,7 +366,7 @@ mds_command
 	rts
 
 ;----------------------------------------------------------------------
-; command 0x0d - set song tempo
+; command 0x0f - set song tempo
 ;----------------------------------------------------------------------
 @set_tempo
 	clr.w	d0
@@ -530,9 +547,9 @@ mds_update_return				equ *
 mds_handle_request
 @tbase		equr	tmpa1
 @reqdata	equr	d0
-@tempo		equr	d1						; global tempo
-@zero		equr	d1
-@tempreg	equr	d2
+@tempreg	equr	d1
+@tempo		equr	d2						; global tempo
+@zero		equr	d2
 @tcount		equr	d3
 @tmask		equr	d3
 
@@ -569,7 +586,6 @@ mds_handle_request
 	move.w	@zero,w_counter(work,rnum)
 	move.w	@zero,w_seq_step(work,rnum)
 	move.w	@zero,w_tmask(work,rnum)
-	move.w	@zero,w_volume(work,rnum)
 
 	add.w	@reqdata,@reqdata
 	add.w	@reqdata,@reqdata				; request table
@@ -578,9 +594,19 @@ mds_handle_request
 	move.l	tmpa0,@tbase
 	adda.w	(tmpa0)+,@tbase					; song base offset
 
-	clr.w	@tcount
-	move.b	(tmpa0)+,@tcount				; (currently ignored)
+	cmpi.b	#(RCOUNT<<1)-2,rnum				; get initial volume
+	sne.b	@tempreg
+	andi.w	#$01,@tempreg
+	move.b	w_bgm_volume(work,@tempreg),@tempreg
+	add.b	(tmpa0)+,@tempreg
+	bpl.s	@no_ovf
+	moveq	#$7f,@tempreg
+@no_ovf
+	move.b	@tempreg,w_volume(work,rnum)
+	bsr.w	mds_convert_vol
+	move.b	@reqdata,w_volume+1(work,rnum)
 
+	clr.w	@tcount
 	move.b	(tmpa0)+,@tcount				; track count
 	subq.b	#1,@tcount
 	bcs.w	mds_handle_request_return
@@ -783,7 +809,7 @@ mds_update_fade
 
 @not_done
 	move.b	d1,w_volume+6(work)
-	bsr		mds_convert_vol
+	bsr.w	mds_convert_vol
 	move.b	d0,w_volume+7(work)
 
 	move.w	w_tmask+6(work),d0

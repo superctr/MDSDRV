@@ -253,7 +253,7 @@ Sequence header format
 	Song volume. Set in -0.75 dB intervals, where 0 is loudest
 	and 127 is essentially silent.
 
-- `+1 (ub)` - `tcount`
+- `+3 (ub)` - `tcount`
 	Number of tracks in the song.
 
 - `+4 (4)`
