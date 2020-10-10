@@ -3,13 +3,6 @@
 ; (C) 2019-2020 ian karlsson
 ;======================================================================
 
-ASM68K = 1
-ASMZ80 = 0
-PACK_Z80 = 1
-
-	include		"mdssub.inc"
-	include		"mdsseq.inc"
-
 ;======================================================================
 ; ABI call
 ;----------------------------------------------------------------------
@@ -2606,9 +2599,9 @@ mds_z80_init
 @z80_driver
 
 	if PACK_Z80
-		incbin	"mdssub.slz"
+		incbin	"out/mdssub.slz"
 	else
-		incbin	"mdssub.bin"
+		incbin	"out/mdssub.bin"
 	endif
 
 	even

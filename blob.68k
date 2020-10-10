@@ -1,6 +1,0 @@
-; builds MDSDRV as binary blob
-	include "mddef.inc"
-	include "mdsdrv.inc"
-	include "mdsdrv.68k"
-
-; vim: set ft=asm68k sw=4 ts=4 noet:

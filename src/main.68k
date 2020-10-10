@@ -1,16 +1,35 @@
-
 DEBUG_SCREEN equ 1
 
-	include "mddef.inc"
-	include "mdsdrv.inc"
-	include "mdsseq.inc"
-	include "main.inc"
-	include "seqlist.inc"
+; MD library includes
+	include "src/mdinit.68k"
+	include "src/mddef.inc"
+	include "src/mdlib.68k"
+	include "src/mdbug.68k"
 
-	include "mdinit.68k"
-	include "mdlib.68k"
-	include "mdbug.68k"
-	include "mdsdrv.68k"
+; MDSDRV core includes
+	include "src/mdsdrv.inc"
+	include "src/mdsseq.inc"
+	include "src/mdssub.inc"
+	include "src/mdsdrv.68k"
+
+; Sequence data list
+	include "out/mdsseq.inc"
+
+	rsset	$ffff0000
+
+ram_begin
+r_break			rs.w	1			; quick and dirty debug
+r_intcnt		rs.w	1			; Vint counter
+r_pcount0		rs.w	1			; VDP counter at beginning of sound driver
+r_pcount1		rs.w	1			; VDP counter at end of sound driver
+r_z80_load		rs.w	1			; Z80 load
+r_pause			rs.b	1			; pause flag
+r_attenuate		rs.b	1			; attenuate flag
+				rs.w	2
+
+r_driver		rs.w	WSIZE		; sound driver
+
+r_request		rs.w	1
 
 main:
 	jsr		vdp_init
@@ -303,7 +322,7 @@ print_instructions
 	even
 
 MDSSEQ:
-	incbin "mdsseq.bin"
+	incbin "out/mdsseq.bin"
 	even
 
 	if *&$7fff
@@ -311,7 +330,7 @@ MDSSEQ:
 	endif
 
 MDSPCM:
-	incbin "mdspcm.bin"
+	incbin "out/mdspcm.bin"
 	even
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:

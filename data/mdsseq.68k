@@ -4,11 +4,11 @@
 ;====================================================================
 
 INCLUDE_MDSSEQ equ 1
-	include "../mdsseq.inc"
+	include "../src/mdsseq.inc"
 
 sddata:
 	dc.b	$10,$01,$1f,$00		; PSG envelope init & magic bytes
-	dc.w	#$0002				; MDSDRV version
+	dc.w	#$0003				; MDSDRV version
 sdcnt:
 	dc.w	SOUND_MAX			; sound count
 sdtop:

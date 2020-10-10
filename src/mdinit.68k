@@ -68,7 +68,7 @@ md_init
 	dc.l	@unhandled	;	$00fc / reserved	
 
 	dc.b	'SEGA MEGA DRIVE '									;	Konsolnamn
-	dc.b	'(C) CTR 2019.DEC'									;	Copyright
+	dc.b	'(C) CTR 2020.OCT'									;	Copyright
 	dc.b	'                                                '	;	Japansk titel
 	dc.b	'MDSDRV Test Program                             '	;	Västerlänsk titel
 	dc.b	'GM 54657374-XX'									;	Produktnummer
