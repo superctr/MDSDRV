@@ -2521,11 +2521,12 @@ mds_pcm_key_on
 
 	clr.w	d1
 	move.b	t_pcm_pitch(twork),d1
+	move.b	d1,d3
 	add.b	d1,d1
 	add.b	d1,d1
 	cmpi.b	#3,w_pcm_mode(work)
 	bne.s	@no_mode3
-	add.b	t_pcm_pitch(twork),d1
+	add.b	d3,d1
 @no_mode3
 	moveq	#0,d2
 	move.w	t_pcm_length(twork),d2
@@ -2534,7 +2535,8 @@ mds_pcm_key_on
 	lea		zp_count(zram,d0),tmpa0
 	move.w	d2,-(sp)						; push a word
 	mds_z80_wait_req
-	move.b	d2,(tmpa0)+
+	move.b	d3,zp_pitch-zp_count(tmpa0)		; write pitch
+	move.b	d2,(tmpa0)+						; write count
 	move.b	(sp)+,(tmpa0)
 	mds_z80_start
 

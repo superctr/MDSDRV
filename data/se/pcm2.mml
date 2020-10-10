@@ -1,0 +1,7 @@
+#platform mdsdrv
+#group se
+
+@1 pcm "../pcm/stefan2.wav"
+
+; Plays on PCM2 and will mix with existing track on PCM1
+K t150 @1 v15 o5 c:60

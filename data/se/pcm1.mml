@@ -1,0 +1,7 @@
+#platform mdsdrv
+#group se
+
+@1 pcm "../pcm/stefan.wav"
+
+; Plays on PCM1 and will interrupt existing track on PCM1
+F t150 @1 v15 o5 c:60

@@ -21,6 +21,8 @@ tools\mdslink.exe -o "out/mdsseq.bin" "out/mdspcm.bin" -i "out/mdsseq.inc" -h "o
   "data/se/menu3.mml" ^
   "data/se/noise1.mml" ^
   "data/se/noise2.mml" ^
+  "data/se/pcm1.mml" ^
+  "data/se/pcm2.mml" ^
   > out\error.txt
 if %ERRORLEVEL% neq 0 goto error
 echo Make mdssub.bin ...
