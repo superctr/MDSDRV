@@ -2591,7 +2591,7 @@ mds_z80_init
 	move.b	d1,(a1)+
 	addq.b	#1,d0
 	bne.s	@next_byte
-	cmpi.w	#8,(a0)+						; last entry?
+	tst.w	(a0)+							; last entry?
 	bne.s	@next_byte
 
 	rts
@@ -2606,7 +2606,7 @@ mds_z80_init
 
 	even
 @volume_table
-	dc.w	256,203,161,128,102,81,64,51,40,32,26,20,16,13,10,8
+	dc.w	256,203,161,128,102,81,64,51,40,32,26,20,16,13,10,0
 
 ;----------------------------------------------------------------------
 ; vim: set ft=asm68k sw=4 ts=4 noet:
