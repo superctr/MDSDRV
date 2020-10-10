@@ -47,7 +47,7 @@ quality) or high latency.
 The PCM buffer is organized as a ring buffer with a maximum width of
 256 bytes.
 
-### `z_load`
+### `z_load` (`$A00E01`)
 
 This variable contains the current size of the sample buffer. It is
 updated by the Z80 after a chunk has been written to the buffer, or
@@ -86,19 +86,18 @@ and when the first DMA transfer occurs. The more you wait in vblank
 before starting the DMA, the bigger chance there is that the Z80 will
 gracefully handle the DMA. However, what if there simply wasn't enough
 time and the 68000 starts a DMA while the Z80 is in the middle of
-reading a chunk.
+reading a chunk?
 
 Now we already know for sure that the Z80 will be stopped if it tries
 to read from the bus while a DMA is ongoing. The sound quality will be
 degraded during this DMA transfer. Now, in the worst case, the Z80 may
 request the bus just as the the DMA is started, and the glitches that
-I mentioned earlier will occur. So the question is, how do we prevent
-them in this case?
+I mentioned earlier will occur. How do we prevent them in this case?
 
 The method that SGDK currently uses (and that which I would suggest for
-now) is to from the 68000, assert a Z80 bus request and deassert it,
-immediately before starting the DMA (writing the final word to the VDP
-command port).
+now) is to from the 68000, assert a Z80 bus request and deassert it
+immediately before starting the DMA by writing the final word to the
+VDP command port.
 
 ## Replenishing the buffer
 
@@ -116,8 +115,10 @@ problematic to constantly read this value.
 
 Furthermore, on PAL systems, it is not possible to determine if we are
 actually in vblank from just reading the vcounter, since it wraps
-around to a value (0xCA) that indicates an active scanline (since it is
-lower than 0xE0, which is when Vblank is normally started).
+around to a value (`0xCA`) that indicates an active scanline (the
+vblank is normally started when the vcounter reaches `0xE0`). This
+method also would not work if double interlace mode (Sonic 2 two-player
+mode) is enabled, since in that case the vcounter bits are rotated.
 
 Because of this, it is possible that the DMA protection will trigger
 more than once in the same vblank period, and if we already told the
