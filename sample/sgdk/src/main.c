@@ -20,6 +20,11 @@ u16 cursor;
 /* Temp text buffer */
 static char buf[40];
 
+void vbl_callback();
+void init_menu();
+void draw_instructions();
+void draw_status(u16 x, u16 y);
+
 /*
  *  MDSDRV must always run in vblank.
  */
@@ -28,37 +33,9 @@ void vbl_callback()
 	MDS_update();
 }
 
-static const char* instruction_text[] = {
-//   0123456789012345678901234567890123456789
-	"     A: Play, B: Stop, C: Fade out      ",
-	" A: Play SE1, B: Play SE2, C: Play SE3  ",
-	"        A: Fade out, B: Fade in         "
-};
-
-void draw_instructions()
-{
-	const char* str = instruction_text[0];
-
-	if(menu_cursor >= ITEM_SE1)
-		str = instruction_text[1];
-	else if(menu_cursor >= ITEM_FTARGET)
-		str = instruction_text[2];
-
-	VDP_setTextPalette(0);
-	VDP_drawText(str, 0, 26);
-}
-
-void draw_status(u16 x, u16 y)
-{
-	sprintf(buf, "%04x %04x %04x %04x",
-		MDS_command(MDS_CMD_GET_STATUS, 0),
-		MDS_command(MDS_CMD_GET_STATUS, 1),
-		MDS_command(MDS_CMD_GET_STATUS, 2),
-		MDS_command(MDS_CMD_GET_STATUS, 3));
-	VDP_setTextPalette(0);
-	VDP_drawText(buf, x, y);
-}
-
+/*
+ *  Program entry
+ */
 int main(u16 hard)
 {
 	JOY_init();
@@ -67,7 +44,13 @@ int main(u16 hard)
 	/*
 	 *  Initialize MDSDRV (done once)
 	 */
-	MDS_init(mdsseqdat, mdspcmdat);
+	if(MDS_init(mdsseqdat, mdspcmdat))
+	{
+		VDP_drawText("MDSDRV init failed!!!!!", 2, 2);
+		VDP_drawText("Please make sure that the driver and", 2, 4);
+		VDP_drawText("sequence data version matches.", 2, 5);
+		return 0;
+	}
 
 	/*
 	 *  run MDSDRV in callback
@@ -77,27 +60,7 @@ int main(u16 hard)
 	/*
 	 *  Draw menu
 	 */
-	VDP_clearPlane(0, FALSE);
-	menu_add_item(ITEM_BGM, "BGM", 1, 0, MDS_command(MDS_CMD_GET_SOUND_CNT, 0));
-	menu_add_item(ITEM_VOLUME, "BGM volume", 0, 0, 127);
-	menu_add_item(ITEM_TEMPO, "BGM tempo", 0, 0, 511);
-//	menu_add_item(ITEM_GVOLUME, "Global volume", 0, 127);
-	menu_add_item(ITEM_BGMVOL, "Initial BGM vol", 0, 0, 127);
-	menu_add_item(ITEM_SEVOL, "Initial SE vol", 0, 0, 127);
-	menu_add_item(ITEM_GTEMPO, "Global tempo", 16, 16, 511); //lower calues cause higher CPU load
-	menu_add_item(ITEM_FTARGET, "Fade target", 20, 0, 127);
-	menu_add_item(ITEM_FSPEED, "Fade speed", 5, 0, 7);
-	menu_add_item(ITEM_SE1, "SE1", SE_BEEP3, SE_MIN, SE_MAX);
-	menu_add_item(ITEM_SE2, "SE2", SE_NOISE1, SE_MIN, SE_MAX);
-	menu_add_item(ITEM_SE3, "SE3", SE_EXPLOSION2, SE_MIN, SE_MAX);
-
-	menu_init(ITEM_MAX);
-	draw_instructions();
-
-	VDP_drawText("MDSDRV SGDK Test Program", 2, 2);
-	VDP_drawText("Version", 2, 22);
-	VDP_drawText(MDS_get_version_str(), 10, 22);
-	VDP_drawText("Status", 2, 24);
+	init_menu();
 
 	while(TRUE)
 	{
@@ -106,8 +69,8 @@ int main(u16 hard)
 		menu_val[ITEM_TEMPO] = MDS_command(MDS_CMD_GET_TEMPO, MDS_BGM);
 		menu_val[ITEM_GTEMPO] = MDS_command(MDS_CMD_GET_GTEMPO, 0);
 #if 0
-		// These values are currently not updated by the driver itself, so
-		// there is normally no need to fetch the values in this application.
+		// These values are normally not modified by the driver itself, so
+		// there is no need to update the values continuously here.
 		action = MDS_command(MDS_CMD_GET_GVOLUME, 0);
 		menu_val[ITEM_BGMVOL] = action >> 8;
 		menu_val[ITEM_SEVOL] = action & 0xff;
@@ -169,3 +132,68 @@ int main(u16 hard)
 	}
 	return 0;
 }
+
+/*
+ *  Initializes the menu options and draws the static text
+ */
+void init_menu()
+{
+	VDP_clearPlane(0, FALSE);
+	menu_add_item(ITEM_BGM, "BGM", 1, 0, MDS_command(MDS_CMD_GET_SOUND_CNT, 0));
+	menu_add_item(ITEM_VOLUME, "BGM volume", 0, 0, 127);
+	menu_add_item(ITEM_TEMPO, "BGM tempo", 0, 0, 511);
+	menu_add_item(ITEM_BGMVOL, "Initial BGM vol", 0, 0, 127);
+	menu_add_item(ITEM_SEVOL, "Initial SE vol", 0, 0, 127);
+	menu_add_item(ITEM_GTEMPO, "Global tempo", 16, 16, 511); //lower values cause higher CPU load
+	menu_add_item(ITEM_FTARGET, "Fade target", 20, 0, 127);
+	menu_add_item(ITEM_FSPEED, "Fade speed", 5, 0, 7);
+	menu_add_item(ITEM_SE1, "SE1", SE_BEEP3, SE_MIN, SE_MAX);
+	menu_add_item(ITEM_SE2, "SE2", SE_NOISE1, SE_MIN, SE_MAX);
+	menu_add_item(ITEM_SE3, "SE3", SE_EXPLOSION2, SE_MIN, SE_MAX);
+
+	menu_init(ITEM_MAX);
+	draw_instructions();
+
+	VDP_drawText("MDSDRV SGDK Test Program", 2, 2);
+	VDP_drawText("Version", 2, 22);
+	VDP_drawText(MDS_get_version_str(), 10, 22);
+	VDP_drawText("Status", 2, 24);
+};
+
+static const char* instruction_text[] = {
+//   0123456789012345678901234567890123456789
+	"     A: Play, B: Stop, C: Fade out      ",
+	" A: Play SE1, B: Play SE2, C: Play SE3  ",
+	"        A: Fade out, B: Fade in         "
+};
+
+/*
+ *  Updates the A,B,C button instructions
+ */
+void draw_instructions()
+{
+	const char* str = instruction_text[0];
+
+	if(menu_cursor >= ITEM_SE1)
+		str = instruction_text[1];
+	else if(menu_cursor >= ITEM_FTARGET)
+		str = instruction_text[2];
+
+	VDP_setTextPalette(0);
+	VDP_drawText(str, 0, 26);
+}
+
+/*
+ *  Displays the currently used tracks for each request slot
+ */
+void draw_status(u16 x, u16 y)
+{
+	sprintf(buf, "%04x %04x %04x %04x",
+		MDS_command(MDS_CMD_GET_STATUS, 0),
+		MDS_command(MDS_CMD_GET_STATUS, 1),
+		MDS_command(MDS_CMD_GET_STATUS, 2),
+		MDS_command(MDS_CMD_GET_STATUS, 3));
+	VDP_setTextPalette(0);
+	VDP_drawText(buf, x, y);
+}
+
