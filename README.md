@@ -26,10 +26,17 @@ A sound driver for Sega Mega Drive/Genesis.
 - Uses approximately 1 kb (1024 bytes) of RAM.
 
 ### Upcoming features
+- LFO control
 - Macro tables
 	- Allows for channel parameters and registers to be modified
 		automatically as a note is playing.
+	- I haven't decided on how this should be implemented.
 - 3 channel PCM playback at ~13 kHz with volume control
+	- This is supported by the PCM driver but not yet used by the
+	  68k code.
+- DMA protection
+	- This is currently semi-implemented, I haven't decided on a
+	  better solution though.
 
 ## How to use
 
@@ -58,9 +65,14 @@ operating systems, `wine` is required.
 
 #### File listing
 - `main.bin` is the sound test ROM. It is built from  `main.68k`.
-- `mdsdrv.bin` is the sound driver binary. It is built from `blob.68k`.
-- `mdssub.bin` is the Z80 driver. It does not need to be included
+- `out/mdsdrv.bin` is the sound driver binary. It is built from
+	`blob.68k`.
+- `out/mdssub.bin` is the Z80 driver. It does not need to be included
 	directly, it is done automatically by `mdsdrv.bin`.
+- `out/mdsseq.bin` is the compiled sequence data. It is built from
+	music and sound effect files using `mdslink`.
+- `out/mdspcm.bin` contains PCM sample data. It is also built using
+	`mdslink`.
 
 #### Interfaces
 - See [api.md](doc/api.md)
@@ -74,3 +86,5 @@ operating systems, `wine` is required.
 ## Special thanks
 - Sik: for making suggestions and giving inspiration for the Z80 driver.
 	Also for the SLZ algorithm used to compress the Z80 driver.
+- Yuzo Koshiro: For creating the MUCOM88 driver which was an
+	inspiration to this project.
