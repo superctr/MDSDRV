@@ -56,7 +56,7 @@ u16 menu_update()
 	u16 action = 0;
 
 	menu_pad_last = menu_pad;
-	menu_pad = JOY_readJoypad(JOY_1);
+	menu_pad = JOY_readJoypad(JOY_1) & 0x00FF;
 	menu_pad_press = (menu_pad ^ menu_pad_last) & menu_pad;
 
 	menu_pad_hold = (menu_pad == menu_pad_last) ? menu_pad_hold + 1 : 0;

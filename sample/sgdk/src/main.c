@@ -129,7 +129,7 @@ int main(u16 hard)
 				break;
 			case MENU_ACTION_START:
 				pause ^= 1;
-				MDS_pause(3, pause);
+				MDS_pause(MDS_BGM, pause);
 				break;
 		}
 		draw_status(10, 24);
