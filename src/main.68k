@@ -108,7 +108,7 @@ read_input:
 	subq.w	#1,(a0)
 	rts
 @down_pressed
-	cmp.w	#$ff,(a0)
+	cmp.w	#SE_MAX,(a0)
 	beq.s	@exit
 	addq.w	#1,(a0)
 	rts
@@ -160,12 +160,31 @@ print_options:
 	clr.w	d1
 	lea		@plist(pc),a0
 	bsr.w	print_command
+
+	cmpi.w	#SE_MIN,(a2)
+	bcc.s	@not_bgm
+
+	lea		@bgm(pc),a0
+	bsr.w	print_command
+	rts
+
+@not_bgm
+	lea		@se(pc),a0
+	bsr.w	print_command
 	rts
 
 @plist
 	p_palette	0
 	p_pos		24,11
 	p_hex_w		r_request
+	p_end
+@bgm
+	p_pos		24,6
+	p_text		"BGM:"
+	p_end
+@se
+	p_pos		24,6
+	p_text		"SE: "
 	p_end
 	even
 
@@ -311,12 +330,6 @@ print_instructions
 	p_text		"A: Play, B: Stop"
 	p_shift		1,9
 	p_text		"C: Fade"
-;	p_shift		1,-2
-;	p_text		"Start: Change info"
-	p_pos		24,6
-	p_text		"BGM:"
-;	p_shift		1,0
-;	p_text		"SE:"
 	p_end
 
 	even

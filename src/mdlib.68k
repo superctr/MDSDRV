@@ -319,8 +319,9 @@ vdp_print_hex:
 ; OUTPUT
 ;   a0 = End of the string
 ;   a1 = Final structure offset
+;   a2 = Pointer to last value printed
 ; TRASHES
-;	a2, d0-d4
+;	d0-d4
 print_command
 	sub.l	a1,a1
 print_structure
