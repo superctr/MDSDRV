@@ -19,6 +19,7 @@ u16 cursor;
 
 /* Temp text buffer */
 static char buf[40];
+static bool pause = FALSE;
 
 void vbl_callback();
 void init_menu();
@@ -106,7 +107,7 @@ int main(u16 hard)
 				break;
 			case MENU_ACTION_A: // Play music
 				if(menu_cursor < ITEM_FTARGET)
-					MDS_request(MDS_BGM, menu_val[ITEM_BGM]);
+					MDS_request(MDS_BGM, menu_val[ITEM_BGM]), pause = FALSE;
 				else if(menu_cursor < ITEM_SE1)
 					MDS_fade(menu_val[ITEM_FTARGET], menu_val[ITEM_FSPEED], FALSE);
 				else
@@ -125,6 +126,10 @@ int main(u16 hard)
 					MDS_fade(0x50, 3, TRUE);
 				else if(menu_cursor >= ITEM_SE1)
 					MDS_request(MDS_SE3, menu_val[ITEM_SE3]);
+				break;
+			case MENU_ACTION_START:
+				pause ^= 1;
+				MDS_pause(3, pause);
 				break;
 		}
 		draw_status(10, 24);
@@ -193,7 +198,10 @@ void draw_status(u16 x, u16 y)
 		MDS_command(MDS_CMD_GET_STATUS, 1),
 		MDS_command(MDS_CMD_GET_STATUS, 2),
 		MDS_command(MDS_CMD_GET_STATUS, 3));
-	VDP_setTextPalette(0);
+	if(pause)
+		VDP_setTextPalette(1);
+	else
+		VDP_setTextPalette(0);
 	VDP_drawText(buf, x, y);
 }
 

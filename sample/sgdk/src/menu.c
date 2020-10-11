@@ -104,6 +104,10 @@ u16 menu_update()
 	{
 		action = MENU_ACTION_C;
 	}
+	else if(menu_pad_press & BUTTON_START)
+	{
+		action = MENU_ACTION_START;
+	}
 
 	menu_draw();
 	return action;

@@ -8,6 +8,7 @@
 #define MENU_ACTION_A  3
 #define MENU_ACTION_B  4
 #define MENU_ACTION_C  5
+#define MENU_ACTION_START 6
 
 extern u16 menu_pad;
 extern u16 menu_pad_last;
