@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.3 201010"
+	dc.b	"MDSDRV0.4 201010"
 version_str_end
 	dc.b	0
 	even
@@ -60,8 +60,8 @@ mds_init
 	move.l	a1,w_sdtop(a0)					; set sdtop
 	swap	@ver
 
-	cmpi.w	#MDSDRV_VER,@ver				; compare version
-	bne.w	mds_init_error
+	cmpi.w	#MDSDRV_MIN_VER,@ver			; compare version
+	bcs.w	mds_init_error
 
 	moveq	#0,@zero
 	move.l	@zero,w_request(a0)				; clear request
