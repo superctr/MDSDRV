@@ -109,8 +109,15 @@ u16 menu_update()
 		action = MENU_ACTION_START;
 	}
 
-	menu_draw();
+	if(action >= MENU_ACTION_UD)
+		menu_draw();
 	return action;
 }
 
-
+void menu_update_value(u16 item_id, u16 value)
+{
+	menu_val[item_id] = value;
+	VDP_setTextPalette((item_id == menu_cursor) ? 1 : 0);
+	sprintf(menu_strbuf, "%04x", value);
+	VDP_drawText(menu_strbuf, 20, 4+item_id);
+}

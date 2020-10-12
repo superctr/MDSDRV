@@ -66,22 +66,22 @@ int main(u16 hard)
 	while(TRUE)
 	{
 		u16 action;
-		menu_val[ITEM_VOLUME] = MDS_command(MDS_CMD_GET_VOLUME, MDS_BGM);
-		menu_val[ITEM_TEMPO] = MDS_command(MDS_CMD_GET_TEMPO, MDS_BGM);
-		menu_val[ITEM_GTEMPO] = MDS_command(MDS_CMD_GET_GTEMPO, 0);
+		menu_update_value(ITEM_VOLUME, MDS_command(MDS_CMD_GET_VOLUME, MDS_BGM));
+		menu_update_value(ITEM_TEMPO, MDS_command(MDS_CMD_GET_TEMPO, MDS_BGM));
+		menu_update_value(ITEM_GTEMPO, MDS_command(MDS_CMD_GET_GTEMPO, 0));
 #if 0
 		// These values are normally not modified by the driver itself, so
 		// there is no need to update the values continuously here.
 		action = MDS_command(MDS_CMD_GET_GVOLUME, 0);
-		menu_val[ITEM_BGMVOL] = action >> 8;
-		menu_val[ITEM_SEVOL] = action & 0xff;
+		menu_update_value(ITEM_BGMVOL, action >> 8);
+		menu_update_value(ITEM_SEVOL, action & 0xff);
 #endif
 
 		action = menu_update();
-
 		switch(action)
 		{
 			default:
+				draw_status(10, 24);
 				break;
 			case MENU_ACTION_UD: // Update cursor
 				draw_instructions();
@@ -132,7 +132,14 @@ int main(u16 hard)
 				MDS_pause(MDS_BGM, pause);
 				break;
 		}
-		draw_status(10, 24);
+
+		/*
+		 * Print cpu load. Turns out that drawing the menu options consumes
+		 * a lot more cycles than actually running the sound driver...
+		 */
+		sprintf(buf, "%3d", SYS_getCPULoad());
+		VDP_drawText(buf, 35, 1);
+
 		VDP_waitVSync();
 	}
 	return 0;
@@ -163,6 +170,7 @@ void init_menu()
 	VDP_drawText("Version", 2, 22);
 	VDP_drawText(MDS_get_version_str(), 10, 22);
 	VDP_drawText("Status", 2, 24);
+	VDP_drawText("%", 38, 1);
 };
 
 static const char* instruction_text[] = {
@@ -198,10 +206,7 @@ void draw_status(u16 x, u16 y)
 		MDS_command(MDS_CMD_GET_STATUS, 1),
 		MDS_command(MDS_CMD_GET_STATUS, 2),
 		MDS_command(MDS_CMD_GET_STATUS, 3));
-	if(pause)
-		VDP_setTextPalette(1);
-	else
-		VDP_setTextPalette(0);
+	VDP_setTextPalette((pause) ? 1 : 0);
 	VDP_drawText(buf, x, y);
 }
 
