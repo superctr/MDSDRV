@@ -723,6 +723,7 @@ mds_handle_request
 	cmpi.w	#6,rnum
 	bne.w	mds_handle_request_return
 
+	clr.b	@zero
 	move.b	@zero,w_fade_target(work)		; clear fadeout state
 	move.b	@zero,w_fade_rate(work)
 	bclr	#pe_fade_stop,w_pcm_mode(work)
