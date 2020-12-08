@@ -1,29 +1,12 @@
 @echo off
 rem build with Wine: wine cmd /c build.bat
+setlocal enabledelayedexpansion enableextensions
 mkdir out
+set MDSDATA=
+for %%x in (data\bgm\*.mml,data\bgm\*.mds,data\se\*.mml,data\se\*.mds) do set MDSDATA=!MDSDATA! "%%x"
+echo Found files: %MDSDATA%
 echo Make mdsseq.bin and mdspcm.bin ...
-tools\mdslink.exe -o "out/mdsseq.bin" "out/mdspcm.bin" -i "out/mdsseq.inc" -h "out/mdsseq.h" ^
-  "data/bgm/jazzy_nyc_99.mml" ^
-  "data/bgm/idk.mds" ^
-  "data/bgm/sand_light.mds" ^
-  "data/bgm/junkers_high.mds" ^
-  "data/bgm/midnight.mds" ^
-  "data/bgm/passport.mds" ^
-  "data/se/beep1.mml" ^
-  "data/se/beep2.mml" ^
-  "data/se/beep3.mml" ^
-  "data/se/beep4.mml" ^
-  "data/se/explosion1.mml" ^
-  "data/se/explosion2.mml" ^
-  "data/se/explosion3.mml" ^
-  "data/se/menu1.mml" ^
-  "data/se/menu2.mml" ^
-  "data/se/menu3.mml" ^
-  "data/se/noise1.mml" ^
-  "data/se/noise2.mml" ^
-  "data/se/pcm1.mml" ^
-  "data/se/pcm2.mml" ^
-  > out\error.txt
+tools\mdslink.exe -o "out/mdsseq.bin" "out/mdspcm.bin" -i "out/mdsseq.inc" -h "out/mdsseq.h" %MDSDATA% > out\error.txt
 if %ERRORLEVEL% neq 0 goto error
 echo Make mdssub.bin ...
 tools\sjasmplus.exe src\mdssub.z80 --raw=out\mdssub.bin --lst=out\mdssub.lst >out\error.txt
