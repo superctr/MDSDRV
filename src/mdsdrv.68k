@@ -965,7 +965,7 @@ mds_update_seq
 ; command table
 ;----------------------------------------------------------------------
 @cmd_length_table
-	dc.b	1,2,2,2, 2,2,2,2, 2,2,2,2, 2,3,2,2		;e0
+	dc.b	1,2,2,2, 2,2,2,2, 2,2,2,2, 2,3,3,3		;e0
 	dc.b	2,0,0,0, 0,3,3,0, 2,2,1,2, 2,3,1,0		;f0
 @cmd_table
 	bra.w	@cmd_slr						;e0 slur
@@ -1231,22 +1231,69 @@ mds_update_seq
 	mds_z80_start
 	bra.w	@next_command
 
+;----------------------------------------------------------------------
+; fmcreg - write to FM operator register
+;----------------------------------------------------------------------
 @cmd_fmcreg
+	btst	#cf+cf_background,flag
+	bne.w	@next_command
+
+	clr.w	@cmd
+	move.b	t_channel_id(twork),@cmd
+
+	move.w	#$4000,@tempreg
+	add.b	@fmcreg_port(pc,@cmd),@tempreg
+
+	move.b	@fmcreg_slot(pc,@cmd),@cmd
+	add.b	0(@tbase,@trackpos),@cmd
+
+	mds_z80_wait_fm
+	move.b	@cmd,0(zram,@tempreg)
+	move.b	1(@tbase,@trackpos),1(zram,@tempreg)
+	mds_z80_start
 	bra.w	@next_command
+
+@fmcreg_slot
+	dc.b	0,1,2,0,1,2 ; reg offset for channel
+@fmcreg_port
+	dc.b	0,0,0,2,2,2 ; port offset for channel
 
 ;----------------------------------------------------------------------
 ; fmtl - set FM TL
 ;----------------------------------------------------------------------
 @cmd_fmtl
+	bsr.s	@cmd_get_tl
+	move.b	1(@tbase,@trackpos),(tmpa0)
 	bra.w	@next_command
 
+;----------------------------------------------------------------------
+; fmtlm - modify FM TL
+;----------------------------------------------------------------------
 @cmd_fmtlm
+	bsr.s	@cmd_get_tl
+	move.b	1(@tbase,@trackpos),@cmd
+	add.b	@cmd,(tmpa0)
+	bpl.w	@next_command
+	svs.b	@cmd							; clamp on overflow
+	and.b	#$7f,@cmd
+	move.b	@cmd,(tmpa0)
 	bra.w	@next_command
+
+@cmd_get_tl
+	lea		t_fm_tl(twork),tmpa0
+	move.b	0(@tbase,@trackpos),@cmd
+	ext.w	@cmd
+	bmi.s	@cmd_fmtl_notl
+	bset	#nf+nf_vol,flag
+@cmd_fmtl_notl
+	adda.w	@cmd,tmpa0
+	rts
 
 ;----------------------------------------------------------------------
 ; comm - communication byte
 ;----------------------------------------------------------------------
 @cmd_comm
+	move.b	0(@tbase,@trackpos),w_comm(work)
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
