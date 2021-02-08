@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.4 201010"
+	dc.b	"MDSDRV0.5 210208"
 version_str_end
 	dc.b	0
 	even
@@ -386,6 +386,26 @@ mds_command
 	rts
 
 ;======================================================================
+; set PCM driver mode
+;----------------------------------------------------------------------
+; INPUT
+;	a0 - pointer to work area
+;	a6 - pointer to start of Z80 RAM
+;	a3 - Z80 bus request
+;	d0 - Driver mode should be 2 or 3
+; TRASHES
+;	--
+; Vblank interrupts should be disabled when calling this
+mds_set_pcm_mode
+	andi.b	#$10,w_pcm_mode(work)
+	or.b	d0,w_pcm_mode(work)
+	mds_z80_wait_req
+	move.b	#1,z_mode_change(zram)
+	move.b	d0,z_mode(zram)
+	mds_z80_start
+	rts
+
+;======================================================================
 ; update sound driver
 ;----------------------------------------------------------------------
 ; INPUT
@@ -535,8 +555,8 @@ mds_update_return				equ *
 	@ch_mapping		#-96,mds_psg_update		; 7
 	@ch_mapping		#-64,mds_psg3_update	; 8
 	@ch_mapping		#-32,mds_psgn_update	; 9
-	@ch_mapping		#10,mds_dummy_update	; a
-	@ch_mapping		#11,mds_dummy_update	; b
+	@ch_mapping		#10,mds_pcm2_ch_update	; a
+	@ch_mapping		#11,mds_pcm3_ch_update	; b
 	@ch_mapping		#12,mds_dummy_update	; c
 	@ch_mapping		#13,mds_dummy_update	; d
 	@ch_mapping		#14,mds_dummy_update	; e
@@ -966,7 +986,7 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_length_table
 	dc.b	1,2,2,2, 2,2,2,2, 2,2,2,2, 2,3,3,3		;e0
-	dc.b	2,0,0,0, 0,3,3,0, 2,2,1,2, 2,3,1,0		;f0
+	dc.b	2,2,2,0, 0,3,3,0, 2,2,1,2, 2,3,1,0		;f0
 @cmd_table
 	bra.w	@cmd_slr						;e0 slur
 	bra.w	@cmd_ins						;e1 instrument
@@ -985,8 +1005,8 @@ mds_update_seq
 	bra.w	@cmd_fmtl						;ee fm tl write
 	bra.w	@cmd_fmtlm						;ef fm tl change
 	bra.w	@cmd_pcm						;f0 pcm instrument
-	bra.w	@cmd_finish						;f1
-	bra.w	@cmd_finish						;f2
+	bra.w	@cmd_pcmrate					;f1 pcm rate
+	bra.w	@cmd_pcmmode					;f2 pcm mode
 	bra.w	@cmd_finish						;f3
 	bra.w	@cmd_finish						;f4
 	bra.w	@cmd_jump						;f5 jump
@@ -1400,6 +1420,24 @@ mds_update_seq
 	addq	#6,tmpa0
 	move.w	(tmpa0),t_pcm_length(twork)
 	ori.l	#((1<<(cf+cf_pcm_control))|(1<<(nf+nf_pcm_header))|(1<<(nf+nf_pcm_pitch))),flag
+	bra.w	@next_command
+
+;----------------------------------------------------------------------
+; pcmrate - set PCM sample rate
+;----------------------------------------------------------------------
+@cmd_pcmrate
+	move.b	0(@tbase,@trackpos),t_pcm_pitch(twork)
+	bset	#nf+nf_pcm_pitch,flag
+	bra.w	@next_command
+
+;----------------------------------------------------------------------
+; pcmmode - switch PCM mixing mode
+;----------------------------------------------------------------------
+@cmd_pcmmode
+	move.w	d0,@tempreg
+	move.b	0(@tbase,@trackpos),d0
+	bsr.w	mds_set_pcm_mode
+	move.w	@tempreg,d0
 	bra.w	@next_command
 
 ;======================================================================
@@ -1953,7 +1991,7 @@ mds_fm6_update
 
 	bclr	#pe_pcm1,w_pcm_mode(work)		; send key off if we just
 	mds_z80_wait_req						; switched from PCM to FM
-	ori.b	#$80,z_pcm1_vol(zreq)
+	ori.b	#$80,z_pcm1_vol(zram)
 	mds_z80_start
 
 mds_fm1_update
@@ -2463,7 +2501,7 @@ mds_psgn_update
 	bra.w	mds_update_return
 
 ;======================================================================
-; Dummy channel update (only check for FM3 and PCM2)
+; Dummy channel update (only check for FM3)
 ;----------------------------------------------------------------------
 mds_dummy_update
 	move.b	t_op_mask(twork),d4
@@ -2472,16 +2510,29 @@ mds_dummy_update
 	bne.w	mds_fm3_update
 @disable_fm3
 	move.b	d4,t_op_mask(twork)
-
 @no_fm3
+	bra.w	mds_update_return
+
+;======================================================================
+; PCM2 channel update (only check for FM3 and PCM2)
+;----------------------------------------------------------------------
+mds_pcm2_ch_update
 	btst	#cf+cf_pcm_control,flag
 	bne.w	mds_pcm2_update
 	bclr	#pe_pcm2,w_pcm_mode(work)
-	beq.s	@no_pcm
-
+	beq.w	mds_update_return
 	mds_z80_pcm_stop_i	1
+	bra.w	mds_update_return
 
-@no_pcm
+;======================================================================
+; PCM3 channel update (only check for FM3 and PCM3)
+;----------------------------------------------------------------------
+mds_pcm3_ch_update
+	btst	#cf+cf_pcm_control,flag
+	bne.w	mds_pcm3_update
+	bclr	#pe_pcm3,w_pcm_mode(work)
+	beq.w	mds_update_return
+	mds_z80_pcm_stop_i	2
 	bra.w	mds_update_return
 
 ;======================================================================
@@ -2590,7 +2641,9 @@ mds_pcm_key_on
 	move.b	d1,d3
 	add.b	d1,d1
 	add.b	d1,d1
-	cmpi.b	#3,w_pcm_mode(work)
+	moveq	#15,d2
+	and.b	w_pcm_mode(work),d2
+	subq.b	#3,d2
 	bne.s	@no_mode3
 	add.b	d3,d1
 @no_mode3

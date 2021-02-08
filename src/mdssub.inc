@@ -164,7 +164,7 @@ mds_z80_pcm_stop	macro ch
 
 mds_z80_pcm_stop_i	macro ch
 	mds_z80_wait_req
-	ori.b	#$80,(\ch*8)+zp_vol(zram)
+	ori.b	#$80,(\ch*8)+z_pcm1+zp_vol(zram)
 	mds_z80_start
 	endm
 

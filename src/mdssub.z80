@@ -640,7 +640,7 @@ m2_pcm_wait
 
 m2_pcm_bufok
 
-;-------------------------------------------; = 30 + 71 = 101
+;-------------------------------------------; = 30 + 73 = 103
 ; Idling while we're waiting to read the buffer
 ; TODO: we could do something useful here...
 	push	hl								; 11

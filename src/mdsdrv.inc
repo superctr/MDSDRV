@@ -44,8 +44,8 @@ twork			equr	a1			; track work
 a_sdtop			equr	a2			; sdtop
 tmpa0			equr	a4			; temp address reg
 tmpa1			equr	a5			; temp address / track base address
-zreq			equr	a3			; track position
-zram			equr	a6
+zreq			equr	a3			; z80 bus request
+zram			equr	a6			; z80 ram
 
 ; during request/track processing
 rnum			equr	d7			; request #  (low word)

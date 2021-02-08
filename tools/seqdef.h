@@ -32,7 +32,7 @@ struct cmd_def
 #define note_start 0x82
 #define note_end 0xdf
 #define chn_cmd_base(cmd) (0xe0 + cmd)
-#define chn_cmd_cnt 17
+#define chn_cmd_cnt 19
 
 const struct cmd_def chn_cmd[chn_cmd_cnt] =
 {
@@ -52,7 +52,9 @@ const struct cmd_def chn_cmd[chn_cmd_cnt] =
 	{"fmcreg", 2, 0},				//13 fm channel write
 	{"fmtl", 2, 0},					//14 fm tl write
 	{"fmtlm", 2, 0},				//15 fm tl change
-	{"pcm", 1, FLG_PCM_ID} 			//16 pcm instrument
+	{"pcm", 1, FLG_PCM_ID},			//16 pcm instrument
+	{"pcmrate", 1, 0},				//17 pcm mix rate
+	{"pcmmode", 1, 0}				//18 pcm mix mode
 };
 
 #define sys_cmd_base(cmd) (0x100-sys_cmd_cnt + cmd)

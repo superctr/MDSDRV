@@ -48,8 +48,8 @@ main:
 	move.w	#$8154,vdp_control	; main screen turn on
 
 	lea		r_driver,a0
-	lea		MDSSEQ(pc),a1
-	lea 	MDSPCM(pc),a2
+	lea		MDSSEQ,a1
+	lea 	MDSPCM,a2
 	bsr.w	mds_init
 
 	move.w	#$8174,vdp_control	; enable interrupt
