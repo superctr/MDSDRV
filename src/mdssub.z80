@@ -627,15 +627,15 @@ m2_pcm_wait
 	sub		(hl)							; 7
 	jp		c,m2_pcm_bufok					; 10
 
-;-------------------------------------------; = 30 + 52 = 82
+;-------------------------------------------; = 30 + 51 = 81
 	xor		a								; 4
 	inc		l								; 4		;z_mode_change
 	cp		(hl)							; 7
 	ret		nz								; 5
 
 	inc		l								; 4		;z_key_on
-	cp		(hl)							; 4
-	jp		nz,m2_key_on					; 10 (-> 72)
+	cp		(hl)							; 7
+	jp		nz,m2_key_on					; 10 (-> 71)
 	jp		m2_loop							; 10
 
 m2_pcm_bufok
