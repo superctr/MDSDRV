@@ -877,7 +877,7 @@ m3_key_on
 	call	nz,m3_pcm3_key_on				; 17/10
 
 ;--------------------------------------
-; - cycle # at entry:      201 - 179 = 18
+; - cycle # at entry:      201 - 183 = 18
 ;
 ; Update PCM 1
 ; - buffer # needed:       11
