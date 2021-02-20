@@ -1878,9 +1878,9 @@ mds_fm3_update_vol
 	bcc.s	@no_vol_table
 	andi.w	#$000f,d3
 	move.b	mds_fm_vol_table(pc,d3),d3
-	add.b	w_volume(work,rnum),d3
 
 @no_vol_table
+	add.b	w_volume(work,rnum),d3
 ;	move.b	t_op_mask(twork),d4
 	moveq	#3,d2
 
