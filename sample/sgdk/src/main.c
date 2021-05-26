@@ -140,7 +140,7 @@ int main(u16 hard)
 		sprintf(buf, "%3d", SYS_getCPULoad());
 		VDP_drawText(buf, 35, 1);
 
-		VDP_waitVSync();
+		SYS_doVBlankProcess();
 	}
 	return 0;
 }
