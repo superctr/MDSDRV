@@ -12,6 +12,7 @@ A sound driver for Sega Mega Drive/Genesis.
 		separate tracks with volume control.
 - PCM playback modes:
 	- 2 channel PCM playback at ~17.5 kHz with volume control
+	- 3 channel PCM playback at ~13.3 kHz with volume control
 - Compact sequence format
 	- Sound data can be compiled from MML files using `ctrmml`
 - Various effects supported:
@@ -29,16 +30,14 @@ A sound driver for Sega Mega Drive/Genesis.
 - Integration with SGDK
 
 ### Upcoming features
-- LFO control
 - Macro tables
 	- Allows for channel parameters and registers to be modified
 		automatically as a note is playing.
 	- I haven't decided on how this should be implemented.
-- 3 channel PCM playback at ~13 kHz with volume control
-	- This is supported by the PCM driver but not yet used by the
-	  68k code.
 
 ## How to use
+Feel free to join the [Discord server](https://discord.com/invite/BPwM6PJv7T)
+if you have any questions or feedback.
 
 ### Composing sound data
 [mmlgui](https://github.com/superctr/mmlgui) provides an easy way

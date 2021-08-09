@@ -140,7 +140,13 @@ int main(u16 hard)
 		sprintf(buf, "%3d", SYS_getCPULoad());
 		VDP_drawText(buf, 35, 1);
 
+#if 0
+		/* SGDK < v1.60 */
+		VDP_waitVSync();
+#else
+		/* SGDK >= v1.60 */
 		SYS_doVBlankProcess();
+#endif
 	}
 	return 0;
 }

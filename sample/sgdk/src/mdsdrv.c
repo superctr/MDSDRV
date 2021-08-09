@@ -44,9 +44,9 @@ u16 MDS_init(const u8* seqdata, const u8* pcmdata)
 	register u16 d0 asm ("d0") = 0;
 	asm volatile (
 		"jsr mdsdrvdat+0"
-		: "=a" (a0), "=a" (a1), "=r" (d0)
-		: "a" (a0), "a" (a1), "a" (a2)
-		: "d1");
+		: "+a" (a0), "+a" (a1), "=r" (d0)
+		: "a" (a2)
+		: "d1", "cc");
 	return d0;
 }
 
@@ -66,7 +66,7 @@ void MDS_request(u16 slot, u16 id)
 		"jsr mdsdrvdat+8"
 		:
 		: "r" (d0), "r" (d1), "a" (a0)
-		: );
+		: "cc" );
 }
 
 //! Command request for low-level access.
@@ -84,9 +84,9 @@ u32 MDS_command(u16 id, u16 param)
 	register u16 d1 asm ("d1") = param;
 	asm volatile (
 		"jsr mdsdrvdat+12"
-		: "=r" (d0), "=r" (d1)
-		: "r" (d0), "r" (d1), "a" (a0)
-		: "a1", "d2");
+		: "+r" (d0), "+r" (d1)
+		: "a" (a0)
+		: "a1", "d2", "cc");
 	return d0;
 }
 
@@ -108,9 +108,9 @@ u32 MDS_command2(u16 id, u16 param1, u16 param2)
 	register u16 d2 asm ("d2") = param2;
 	asm volatile (
 		"jsr mdsdrvdat+12"
-		: "=r" (d0), "=r" (d1), "=r" (d2)
-		: "r" (d0), "r" (d1), "r" (d2), "a" (a0)
-		: "a1");
+		: "+r" (d0), "+r" (d1), "+r" (d2)
+		: "a" (a0)
+		: "a1", "cc");
 	return d0;
 }
 
@@ -126,7 +126,7 @@ void MDS_update()
 		"jsr mdsdrvdat+4"
 		: "=a" (a6)
 		: "a" (a0)
-		: "a1", "a2", "a3", "a4", "a5", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7");
+		: "a1", "a2", "a3", "a4", "a5", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "cc");
 }
 
 //! Get sound driver version
@@ -140,9 +140,9 @@ char* MDS_get_version_str()
 	register u32 d0 asm ("d0") = MDS_CMD_GET_VERSION;
 	asm volatile (
 		"jsr mdsdrvdat+12"
-		: "=r" (d0), "=a" (a0)
-		: "r" (d0), "a" (a0)
-		: "a1", "d1", "d2");
+		: "+r" (d0), "+a" (a0)
+		:
+		: "a1", "d1", "d2", "cc");
 	return (char*)a0;
 }
 
