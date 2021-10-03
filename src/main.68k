@@ -15,6 +15,13 @@ DEBUG_SCREEN equ 1
 ; Sequence data list
 	include "out/mdsseq.inc"
 
+	if ~def(SE_MIN)
+SE_MIN equ BGM_MAX+1
+	endif
+	if ~def(SE_MAX)
+SE_MAX equ BGM_MAX
+	endif
+
 	rsset	$ffff0000
 
 ram_begin
@@ -55,6 +62,11 @@ main:
 	move.w	#$8174,vdp_control	; enable interrupt
 
 	move.w	#$2300,sr			; interrupt enable
+
+	tst.w	r_request
+	bne.s	@nz
+	move.w	#BGM_MIN,r_request
+@nz
 
 ;====================================================================
 ; Main loop

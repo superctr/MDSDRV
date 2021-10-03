@@ -66,6 +66,9 @@ operating systems, `wine` is required.
 	# creates `main.bin` (test ROM) and `mdsdrv.bin` (sound driver blob)
 	wine /c build.bat
 
+To quickly generate a ROM (in Windows) with a single song, you can drag
+and drop a .MDS or .MML file into "quickrom.bat"
+
 ### Using MDSDRV
 Once compiled, using MDSDRV should be as easy as including the binary
 files (`mdsdrv.bin`, `mdsseq.bin`, `mdspcm.bin`) in your project, and
