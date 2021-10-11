@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.5 210208"
+	dc.b	"MDSDRV0.5 211011"
 version_str_end
 	dc.b	0
 	even
@@ -702,15 +702,19 @@ mds_handle_request
 ; psg initialize
 ;--------------------------------------
 	move.w	@zero,t_psg_nreset(twork)		; noise mode initialize
-	move.w	#$fff8,t_psg_eg_addr(twork)		; psg eg initialize
-	move.w	#$ff0f,t_psg_eg_pos(twork)
+	move.l	#$fff8ff0f,t_psg_eg_addr(twork)	; psg eg initialize
 	bra.s	@not_fm
 
 ;--------------------------------------
 ; fm initialize
 ;--------------------------------------
+; a new FM instrument will always be loaded when initializing a new
+; song. If the tbase table entry #0 doesn't point to a valid FM
+; instrument, weird parameters will be written to the FM patch, as a
+; workaround for now we set all 4 operators TL to 7f.
 @not_psg
-	move.b	#$c0,t_fm_pan_lfo(twork)		; initial panning
+	move.w	#$c000,t_fm_pan_lfo(twork)		; initial panning + alg
+	move.l	#$7f7f7f7f,t_fm_tl(twork)
 
 @not_fm
 	lea		TSIZE(twork),twork
