@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.5 211011"
+	dc.b	"MDSDRV0.6 220131"
 version_str_end
 	dc.b	0
 	even
@@ -883,8 +883,12 @@ mds_update_seq
 @tempreg	equr	d3
 @sp			equr	d4
 	subq.b	#1,t_counter(twork)
-	bcc.w	mds_update_seq_return
+;	bcc.w	mds_update_seq_return
+	bcs.s	@read_command
 
+	move.w	t_mtab_addr(twork),d0
+	beq.w	mds_update_seq_return
+	bra.w	mds_update_mtab
 ;----------------------------------------------------------------------
 ; command read loop
 ;----------------------------------------------------------------------
@@ -912,7 +916,9 @@ mds_update_seq
 	bclr	#nf+nf_key_on,flag
 	move.w	@trackpos,t_position(twork)
 	move.b	@sp,t_stack_pos(twork)
-	bra.w	mds_update_seq_return
+	move.w	t_mtab_addr(twork),d0
+	beq.w	mds_update_seq_return
+	bra.w	mds_update_mtab
 
 ;--------------------------------------
 ; handle $80..$ff
@@ -935,6 +941,10 @@ mds_update_seq
 	bset	#nf+nf_key_on,flag
 	btst	#nf+nf_slur,flag
 	bne.s	@cmd_tie
+	btst	#cf+cf_mtab_carry,flag
+	beq.s	@cmd_note_noreset
+	clr.w	t_mtab_delay(twork)
+@cmd_note_noreset
 	bset	#nf+nf_key_off,flag
 	btst	#cf+cf_drum_mode,flag
 	bne.s	@cmd_drum_mode
@@ -953,13 +963,17 @@ mds_update_seq
 	addq.w	#1,@trackpos
 	move.w	@trackpos,t_position(twork)
 	move.b	@sp,t_stack_pos(twork)
-	bra.w	mds_update_seq_return
+	move.w	t_mtab_addr(twork),d0
+	beq.w	mds_update_seq_return
+	bra.w	mds_update_mtab
 
 @cmd_previous_length						; use length of prev. note
 	move.b	t_note_time(twork),t_counter(twork)
 	move.w	@trackpos,t_position(twork)
 	move.b	@sp,t_stack_pos(twork)
-	bra.w	mds_update_seq_return
+	move.w	t_mtab_addr(twork),d0
+	beq.w	mds_update_seq_return
+	bra.w	mds_update_mtab
 
 ;--------------------------------------
 ; handle commands ($e0..$ff)
@@ -983,7 +997,6 @@ mds_update_seq
 	move.w	0(@tbase,@cmd),@trackpos
 	moveq	#1,@cmdlen
 	bra.w	@next_command
-
 
 ;----------------------------------------------------------------------
 ; command table
@@ -1042,7 +1055,9 @@ mds_update_seq
 
 	move.w	@trackpos,t_position(twork)
 	move.b	@sp,t_stack_pos(twork)
-	bra.w	mds_update_seq_return
+	move.w	t_mtab_addr(twork),d0
+	beq.w	mds_update_seq_return
+	bra.w	mds_update_mtab
 
 @cmd_return
 	subq.b	#2,@sp
@@ -1204,8 +1219,7 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_nmode
 	st		t_last_pitch(twork)
-	move.b	0(@tbase,@trackpos),@cmd
-	move.b	@cmd,t_psg_nmode(twork)
+	move.b	0(@tbase,@trackpos),t_psg_nmode(twork)
 	bset	#nf+nf_nmode,flag
 	bra.w	@next_command
 
@@ -1213,6 +1227,18 @@ mds_update_seq
 ; mtab - set macro table
 ;----------------------------------------------------------------------
 @cmd_mtab
+	clr.w	@cmd
+	move.w	@cmd,t_mtab_delay(twork)
+	move.b	0(@tbase,@trackpos),@cmd
+	beq.s	@cmd_mtab_off
+	subq.w	#1,@cmd
+	add.w	@cmd,@cmd
+	move.w	0(@tbase,@cmd),t_mtab_addr(twork)
+	bset	#cf+cf_mtab_carry,flag
+	bra.w	@next_command
+@cmd_mtab_off
+	move.w	@cmd,t_mtab_addr(twork)
+	bclr	#cf+cf_mtab_carry,flag
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
@@ -1442,6 +1468,210 @@ mds_update_seq
 	move.b	0(@tbase,@trackpos),d0
 	bsr.w	mds_set_pcm_mode
 	move.w	@tempreg,d0
+	bra.w	@next_command
+
+;======================================================================
+; update macro tables
+;----------------------------------------------------------------------
+; INPUT
+;   d0 - macro table position
+mds_update_mtab
+@tbase		equr	tmpa1
+	subq.b	#1,t_mtab_delay(twork)
+	bcc.w	mds_update_seq_return
+
+	move.l	t_base_addr(twork),@tbase
+	adda.w	d0,@tbase
+	clr.w	d0
+	move.b	t_mtab_pos(twork),d0
+	add.w	d0,d0
+
+@next_command
+	moveq	#0,d2
+	addq.w	#2,d0
+	move.b	-1(@tbase,d0),d1		; parameter
+	move.b	-2(@tbase,d0),d2		; command
+	bmi.s	@command
+
+;----------------------------------------------------------------------
+; $80 - $bf : set channel variable
+; $c0 - $ff : add to channel variable
+;----------------------------------------------------------------------
+@var_write
+	moveq	#$40,d3
+	cmp.b	d3,d2
+	bcs.s	@var_set
+	sub.b	d3,d2
+
+	move.b	0(twork,d2),d3
+
+	cmpi.b	#t_fm_tl,d2
+	bcs.s	@no_tl_add
+
+	add.b	d3,d1
+	bpl.s	@var_set
+	svs.b	d1
+	andi.b	#$7f,d1
+	moveq	#0,d3
+
+@no_tl_add
+	add.b	d3,d1
+
+@var_set
+	move.b	d1,0(twork,d2)
+	cmpi.b	#t_vol,d2
+	bcs.s	@next_command
+	bset	#nf+nf_vol,flag
+	bra.s	@next_command
+
+@command
+	add.b	d2,d2
+	add.b	d2,d2
+	bcs.s	@fmcreg
+	jmp		@commands(pc,d2)
+
+;----------------------------------------------------------------------
+; $40 - $7f : write FM channel register
+;----------------------------------------------------------------------
+@fmcreg
+	clr.w	d3
+	move.b	t_channel_id(twork),d3
+
+	add.b	@fmcreg_slot(pc,d3),d2
+
+	move.w	#$4000,d4
+	add.b	@fmcreg_port(pc,d3),d4
+
+	mds_z80_wait_fm
+	move.b	d2,0(zram,d4)
+	nop
+	move.b	d1,1(zram,d4)
+	mds_z80_start
+	bra.w	@next_command
+
+@fmcreg_slot
+	dc.b	0,1,2,0,1,2 ; reg offset for channel
+@fmcreg_port
+	dc.b	0,0,0,2,2,2 ; port offset for channel
+
+@commands
+	bra.w	@mtab_jump				;$80
+	bra.w	@mtab_wait				;$81
+	bra.w	@mtab_retrig			;$82
+	bra.w	@mtab_carry				;$83
+	bra.w	@mtab_lp				;$84
+	bra.w	@mtab_lpb				;$85
+	bra.w	@mtab_lpf				;$86
+	bra.w	@mtab_pan				;$87
+	bra.w	@mtab_lfo				;$88
+	bra.w	@mtab_nmode				;$89
+
+;----------------------------------------------------------------------
+; $80 00 - end macro table
+; $80 nn - jump back
+;----------------------------------------------------------------------
+@mtab_jump
+	moveq	#-1,d2
+	move.b	d1,d2
+	bne.w	@mtab_jumpback			;00 = exit mtab
+
+	clr.w	t_mtab_addr(twork)
+	bra.w	mds_update_seq_return
+
+@mtab_jumpback
+	add.w	d2,d0
+	add.w	d2,d0
+	bra.w	@next_command
+
+;----------------------------------------------------------------------
+; $81 nn - wait n-1 ticks
+; $82 nn - retrigger note and wait n-1 ticks
+;----------------------------------------------------------------------
+@mtab_retrig
+	ori.l	#(1<<(nf+nf_key_on))|(1<<(nf+nf_key_off)),flag
+@mtab_wait
+	move.b	d1,t_mtab_delay(twork)
+	lsr.w	#1,d0
+	move.b	d0,t_mtab_pos(twork)
+	bra.w	mds_update_seq_return
+
+;----------------------------------------------------------------------
+; $83 nn - enable carry
+;----------------------------------------------------------------------
+@mtab_carry
+	bclr	#cf+cf_mtab_carry,flag
+	bra.w	@next_command
+
+;----------------------------------------------------------------------
+; $84 nn - set loop position
+;----------------------------------------------------------------------
+@mtab_lp
+	move.b	d1,t_mtab_repeat(twork)
+	bra.w	@next_command
+
+;----------------------------------------------------------------------
+; $85 nn - set loop break
+;----------------------------------------------------------------------
+@mtab_lpb
+	tst.b	t_mtab_repeat(twork)
+	bne.w	@next_command
+
+	moveq	#0,d2
+	move.b	d1,d2
+	bra.s	@mtab_jumpback
+
+;----------------------------------------------------------------------
+; $86 nn - loop finish
+;----------------------------------------------------------------------
+@mtab_lpf
+	subq.b	#1,t_mtab_repeat(twork)
+	bcs.w	@next_command
+
+	moveq	#-1,d2
+	move.b	d1,d2
+	bra.s	@mtab_jumpback
+
+;----------------------------------------------------------------------
+; $87 nn - set panning
+;----------------------------------------------------------------------
+@mtab_pan
+	move.b	t_channel_id(twork),d2
+	cmpi.b	#6,d2							; fm only
+	bcc.w	@next_command
+
+	move.b	t_fm_pan_lfo(twork),d2
+	andi.b	#$3f,d2
+	or.b	d1,d2
+	move.b	d2,t_fm_pan_lfo(twork)
+	bset	#nf+nf_pan_lfo,flag
+	bra.w	@next_command
+
+;----------------------------------------------------------------------
+; $88 nn - set lfo sensitivity
+;----------------------------------------------------------------------
+@mtab_lfo
+	move.b	t_channel_id(twork),d2
+	cmpi.b	#6,d2							; fm only
+	bcc.w	@next_command
+
+	move.b	t_fm_pan_lfo(twork),d2
+	andi.b	#$c0,d2
+	or.b	d1,d2
+	move.b	d2,t_fm_pan_lfo(twork)
+	bset	#nf+nf_pan_lfo,flag
+	bra.w	@next_command
+
+;----------------------------------------------------------------------
+; $89 nn - set psg noise mode
+;----------------------------------------------------------------------
+@mtab_nmode
+	move.b	t_channel_id(twork),d2
+	cmpi.b	#6,d2							; psg only
+	bcs.w	@next_command
+
+	st		t_last_pitch(twork)
+	move.b	d1,t_psg_nmode(twork)
+	bset	#nf+nf_nmode,flag
 	bra.w	@next_command
 
 ;======================================================================

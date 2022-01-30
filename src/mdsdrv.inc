@@ -89,7 +89,7 @@ nf_enabled		rs.b	1			; envelopes enabled(must be bit7!)
 ;======================================================================
 	rsreset
 cf_drum_mode	rs.b	1			; drum mode enabled
-				rs.b	1			; (unused bit)
+cf_mtab_carry	rs.b	1			; mtab carry disabled if set
 cf_pcm_control	rs.b	1			; pcm instrument loaded
 cf_stop			rs.b	1			; stop channel
 cf_suspend		rs.b	1			; track is paused and can be
