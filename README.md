@@ -13,6 +13,8 @@ A sound driver for Sega Mega Drive/Genesis.
 - PCM playback modes:
 	- 2 channel PCM playback at ~17.5 kHz with volume control
 	- 3 channel PCM playback at ~13.3 kHz with volume control
+	- Samples can play at 8 different sampling rates independent of
+		the mixing rate
 - Compact sequence format
 	- Sound data can be compiled from MML files using `ctrmml`
 - Various effects supported:
@@ -21,6 +23,9 @@ A sound driver for Sega Mega Drive/Genesis.
 	- Portamento
 	- Fade in/out
 	- Song volume and tempo control
+- Macro tables
+	- Allows for channel parameters and registers to be modified
+		automatically as a note is playing.
 - Equal temperament scale with 256 steps per semitone, allowing for
 	easy detune or pitch slide effects.
 - Unencumbered source code
@@ -30,10 +35,8 @@ A sound driver for Sega Mega Drive/Genesis.
 - Integration with SGDK
 
 ### Upcoming features
-- Macro tables
-	- Allows for channel parameters and registers to be modified
-		automatically as a note is playing.
-	- I haven't decided on how this should be implemented.
+- Pico and System C/C2 ports are possible... Maybe I will...
+- Better DMA protection?
 
 ## How to use
 Feel free to join the [Discord server](https://discord.com/invite/BPwM6PJv7T)
@@ -98,8 +101,12 @@ automatically build the SGDK test program.
 #### Precautions when using DMA
 - See [dma.md](doc/dma.md)
 
+Currently the Z80 code does not have any protection against reading ROM
+during DMA transfers. Please halt Z80 by issuing a bus request before
+starting DMAs to ensure system stability.
+
 ## Copyright
-&copy; 2019-2020 Ian Karlsson.
+&copy; 2019-2022 Ian Karlsson.
 
 MDSDRV is licensed under the terms of the [zlib license](COPYING).
 
@@ -118,13 +125,12 @@ try to find a good replacement.
 this repository has been downloaded from the
 [Github repository](https://github.com/sjasmplus/sjasmplus).
 
-`slz` is licensed under the zlib license. The version included in this
-repository has been compiled from the source code in the
-[Github repository](https://github.com/sikthehedgehog/mdtools).
+`salvador` is released under the zlib license. The version included in
+this repository has been compiled from the source code in the
+[Github repository](https://github.com/emmanuel-marty/salvador).
 
 ## Special thanks
 - Sik: for making suggestions and giving inspiration for the Z80 driver.
-	Also for the SLZ algorithm used to compress the Z80 driver.
 - Yuzo Koshiro: For creating the MUCOM88 driver which was an
 	inspiration to this project.
 - All beta testers.

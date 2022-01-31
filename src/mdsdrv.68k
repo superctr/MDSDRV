@@ -1,7 +1,7 @@
 ;======================================================================
 ; MDSDRV - Mega Drive 68K Sound Driver
 ;======================================================================
-; Copyright (c) 2019-2020 Ian Karlsson
+; Copyright (c) 2019-2022 Ian Karlsson
 ;
 ; This software is provided 'as-is', without any express or implied
 ; warranty. In no event will the authors be held liable for any damages
@@ -2954,7 +2954,7 @@ mds_z80_init
 @z80_driver
 
 	if PACK_Z80
-		incbin	"out/mdssub.slz"
+		incbin	"out/mdssub.zx0"
 	else
 		incbin	"out/mdssub.bin"
 	endif

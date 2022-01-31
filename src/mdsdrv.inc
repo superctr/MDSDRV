@@ -1,7 +1,7 @@
 ;======================================================================
 ; MDSDRV - Mega Drive 68K Sound Driver
 ;======================================================================
-; Copyright (c) 2019-2020 Ian Karlsson
+; Copyright (c) 2019-2022 Ian Karlsson
 ;
 ; This software is provided 'as-is', without any express or implied
 ; warranty. In no event will the authors be held liable for any damages

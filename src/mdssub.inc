@@ -1,7 +1,7 @@
 ;======================================================================
 ; MDSDRV - Mega Drive 68K Sound Driver
 ;======================================================================
-; Copyright (c) 2019-2020 Ian Karlsson
+; Copyright (c) 2019-2022 Ian Karlsson
 ;
 ; This software is provided 'as-is', without any express or implied
 ; warranty. In no event will the authors be held liable for any damages
@@ -175,76 +175,69 @@ mds_z80_pcm_volume	macro ch,vol
 	endm
 
 mds_z80_unpack	macro
-;======================================================================
-; Sik SLZ routine follows: (Slightly modified register usage)
-;======================================================================
-; DecompressSlz
-; Decompresses SLZ data into memory
-;----------------------------------------------------------------------
-; input a0.l .... Pointer to compressed data
-; input a1.l .... Where to store decompressed data
-; output a0.l ... Right after input buffer
-; output a1.l ... Right after output buffer
+; ZX0 decompressor for 68000 (ASM68K syntax)
+; Original version by Emmanuel Marty.
+; Rewritten and modified by ctr 2022
+	movem.l	d2/a2,-(sp)
 
-	movem.l	d5-d7,-(sp)
-	move.w  d3,-(sp)			; Save registers
-	move.w  d4,-(sp)
+	moveq	#-128,d0
+	moveq	#-1,d2
 
-	move.b  (a0)+,d7			; Get uncompressed size
-	lsl.w   #8,d7
-	move.b  (a0)+,d7
+@literal\@
+	moveq	#1,d1
+	bsr.s	@gamma\@
+	subq.w	#1,d1
+@lit_copy\@
+	move.b	(a0)+,(a1)+
+	dbra	d1,@lit_copy\@
 
-	moveq   #1,d6				; Cause code to fetch new token data
-								; as soon as it starts
-@MainLoop\@
-	tst.w   d7					; Did we read all the data?
-	beq     @End\@				; If so, we're done with it!
+	add.b	d0,d0
+	bcs.s	@new_offset\@
 
-	subq.w  #1,d6				; Check if we need more tokens
-	bne.s   @HasTokens\@
-	move.b  (a0)+,d5
-	moveq   #8,d6
-@HasTokens\@
+@last_offset\@					;copy from last offset
+	moveq	#1,d1
+	bsr.s	@gamma\@
+	subq.w	#1,d1
 
-	add.b   d5,d5				; Get next token type
-	bcc.s   @Uncompressed\@		; 0 = uncompressed, 1 = compressed
+@match\@
+	move.l	a1,a2
+	adda.w	d2,a2
+@match_copy\@
+	move.b	(a2)+,(a1)+
+	dbra	d1,@match_copy\@
 
-	move.b  (a0)+,d3			; Compressed? Read string info
-	lsl.w   #8,d3				; d3 = distance
-	move.b  (a0)+,d3			; d4 = length
-	move.b  d3,d4
-	lsr.w   #4,d3
-	and.w   #$0F,d4
+	add.b	d0,d0
+	bcc.s	@literal\@
 
-	subq.w  #3,d7				; Length is offset by 3
-	sub.w   d4,d7				; Now that we know the string length,
-								; discount it from the amount of data
-								; to be read
+@new_offset\@					;copy from new offset
+	moveq	#-2,d1
+	bsr.s	@gamma\@
+	addq.b	#1,d1
+	beq.s	@done\@				;finished if msb is 256
 
-	addq.w  #3,d3				; Distance is offset by 3
-	neg.w   d3					; Make distance go backwards
+	move.b	d1,-(sp)			;shift left 8
+	move.w	(sp)+,d2
+	move.b	(a0)+,d2
 
-	add.w   d4,d4				; Copy bytes using Duff's device
-	add.w   d4,d4				; MUCH faster than a loop, due to lack
-	eor.w   #$0F<<2,d4			; of iteration overhead
-	jmp     @Duff\@(pc,d4.w)
-@Duff\@
-	rept    $10+2
-	move.b  (a1,d3.w),(a1)+
-	endr
+	moveq	#1,d1
+	asr.l	#1,d2
+	bcs.s	@match\@
+	pea		@match\@(pc)
 
-	bra     @MainLoop\@			; Keep processing data
+@gamma_bit\@
+	add.b	d0,d0
+	addx.w	d1,d1
+@gamma\@
+	add.b	d0,d0
+	bne.s	@new_byte\@
+	move.b	(a0)+,d0
+	addx.b	d0,d0
+@new_byte\@
+	bcc.s	@gamma_bit\@
+	rts
 
-@Uncompressed\@
-	move.b  (a0)+,(a1)+			; Uncompressed? Read as is
-	subq.w  #1,d7				; It's always one byte long
-	bra     @MainLoop\@			; Keep processing data
-
-@End\@
-	move.w  (sp)+,d4			; Restore registers
-	move.w  (sp)+,d3
-
-	movem.l	(sp)+,d5-d7
+@done\@
+	movem.l	(sp)+,d2/a2
 	endm
 
 	endif
