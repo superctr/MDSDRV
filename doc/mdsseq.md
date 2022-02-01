@@ -564,39 +564,39 @@ The following commands are currently supported. Any commands not
 listed in this table may result in a crash or other bad behavior.
 (Command number is given in hex)
 
-| Cmd  | Description                                               |
-| ---- | --------------------------------------------------------- |
-| `11` | Set detune                                                |
-| `16` | Set transpose                                             |
-| `17` | Set portamento                                            |
-| `18` | Set volume                                                |
-| `36` | Set TL for operator 1                                     |
-| `37` | Set TL for operator 3                                     |
-| `38` | Set TL for operator 2                                     |
-| `39` | Set TL for operator 4                                     |
-| `51` | Add argument byte to detune                               |
-| `56` | Add argument byte to transpose                            |
-| `57` | Add argument byte to portamento                           |
-| `58` | Add argument byte to volume                               |
-| `76` | Add argument byte to TL for operator 1                    |
-| `77` | Add argument byte to TL for operator 3                    |
-| `78` | Add argument byte to TL for operator 2                    |
-| `79` | Add argument byte to TL for operator 4                    |
-| `80` | If argument byte is 0, disable macro table.               |
-|      | Otherwise add `arg` to node position.                     |
-| `81` | Wait `arg-1` ticks.                                       |
-| `82` | Retrigger note, then wait `arg-1` ticks.                  |
-| `83` | Enable carry; if enabled macro table position will not be |
-|      | reset after key on                                        |
-| `84` | Set loop count to `arg-1`                                 |
-| `85` | If loop count is 0, add `arg` to node position            |
-| `86` | Subtract 1 from loop count.                               |
-|      | If not zero add `arg` to node position.                   |
-| `87` | Set panning. FM only                                      |
-| `88` | Set LFO sensitivity. FM only                              |
-| `89` | Set PSG noise mode. PSG only                              |
-| `C0-FF` | Write `arg` to the FM channel register specified by    |
-|         | `cmd<<2`.                                              |
+| Cmd  | Description                                                |
+| ---- | ---------------------------------------------------------- |
+| `11` | Set detune                                                 |
+| `16` | Set transpose                                              |
+| `17` | Set portamento                                             |
+| `18` | Set volume                                                 |
+| `36` | Set TL for operator 1                                      |
+| `37` | Set TL for operator 3                                      |
+| `38` | Set TL for operator 2                                      |
+| `39` | Set TL for operator 4                                      |
+| `51` | Add argument byte to detune                                |
+| `56` | Add argument byte to transpose                             |
+| `57` | Add argument byte to portamento                            |
+| `58` | Add argument byte to volume                                |
+| `76` | Add argument byte to TL for operator 1                     |
+| `77` | Add argument byte to TL for operator 3                     |
+| `78` | Add argument byte to TL for operator 2                     |
+| `79` | Add argument byte to TL for operator 4                     |
+| `80` | If argument byte is 0, reset position and wait for key on. |
+|      | Otherwise add `arg` to node position.                      |
+| `81` | Wait `arg-1` ticks.                                        |
+| `82` | Retrigger note, then wait `arg-1` ticks.                   |
+| `83` | Enable carry; if enabled macro table position will not be  |
+|      | reset after key on                                         |
+| `84` | Set loop count to `arg-1`                                  |
+| `85` | If loop count is 0, add `arg` to node position             |
+| `86` | Subtract 1 from loop count.                                |
+|      | If not zero add `arg` to node position.                    |
+| `87` | Set panning. FM only                                       |
+| `88` | Set LFO sensitivity. FM only                               |
+| `89` | Set PSG noise mode. PSG only                               |
+| `C0-FF` | Write `arg` to the FM channel register specified by     |
+|         | `cmd<<2`.                                               |
 
 The node position is an 8-bit unsigned byte which will wrap to 0.
 You can therefore use commands with negative argument values to return

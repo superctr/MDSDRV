@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.6 220131"
+	dc.b	"MDSDRV0.6 220201"
 version_str_end
 	dc.b	0
 	even
@@ -1494,8 +1494,8 @@ mds_update_mtab
 	bmi.s	@command
 
 ;----------------------------------------------------------------------
-; $80 - $bf : set channel variable
-; $c0 - $ff : add to channel variable
+; $00 - $3f : set channel variable
+; $40 - $7f : add to channel variable
 ;----------------------------------------------------------------------
 @var_write
 	moveq	#$40,d3
@@ -1524,6 +1524,9 @@ mds_update_mtab
 	bset	#nf+nf_vol,flag
 	bra.s	@next_command
 
+;----------------------------------------------------------------------
+; $80 - $ff
+;----------------------------------------------------------------------
 @command
 	add.b	d2,d2
 	add.b	d2,d2
@@ -1531,7 +1534,7 @@ mds_update_mtab
 	jmp		@commands(pc,d2)
 
 ;----------------------------------------------------------------------
-; $40 - $7f : write FM channel register
+; $c0 - $ff : write FM channel register
 ;----------------------------------------------------------------------
 @fmcreg
 	clr.w	d3
@@ -1575,7 +1578,12 @@ mds_update_mtab
 	move.b	d1,d2
 	bne.w	@mtab_jumpback			;00 = exit mtab
 
-	clr.w	t_mtab_addr(twork)
+; we want to keep the table address so we can restart on a new note
+; so instead we set the delay to max and wait in an infinite loop
+	lsr.w	#1,d0
+	moveq	#-1,d1					;delay = 0xff
+	add.b	d0,d1					;pos -= 1
+	move.w	d1,t_mtab_delay(twork)
 	bra.w	mds_update_seq_return
 
 @mtab_jumpback
