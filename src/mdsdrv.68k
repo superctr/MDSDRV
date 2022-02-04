@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.6 220201"
+	dc.b	"MDSDRV0.6 220205"
 version_str_end
 	dc.b	0
 	even
@@ -1712,7 +1712,7 @@ mds_check_priority
 ; OUTPUT
 ;   d0 - pitch value
 ; TRASHES
-;   tmpa1, d1, d2
+;   tmpa1, d1-d3
 mds_get_fm_pitch
 	lsl.l	#8,d0
 	move.w	d0,d1							; upper bits of keycode
@@ -1721,12 +1721,13 @@ mds_get_fm_pitch
 	move.b	mds_octave_table-mds_note_table(tmpa1,d0),d2	; octave
 	move.b	0(tmpa1,d0),d0
 	add.b	t_ins_trs(twork),d0				;freq tab displacement
-	lea		@fm_freq_tab(pc,d0),tmpa1
-	move.w	2(tmpa1),d0
-	sub.w	(tmpa1),d0
+	move.l	@fm_freq_tab(pc,d0),d3
+	move.w	d3,d0
+	swap	d3
+	sub.w	d3,d0
 	mulu	d1,d0							;interpolate
 	swap	d0
-	add.w	(tmpa1),d0
+	add.w	d3,d0
 	rol.w	#8,d0
 	add.b	d2,d0							;octave added
 	rts
@@ -1753,12 +1754,12 @@ mds_get_psg_pitch
 	move.b	mds_octave_table-mds_note_table(tmpa0,d0),d2	; octave
 	move.b	0(tmpa0,d0),d0
 	lea		@psg_freq_tab(pc,d0),tmpa0
-	move.w	(tmpa0),d0
-	sub.w	2(tmpa0),d0
+	move.w	(tmpa0)+,d0
+	sub.w	(tmpa0),d0
 	mulu	d1,d0							;interpolate
 	swap	d0
 	neg.w	d0
-	add.w	(tmpa0),d0
+	add.w	-(tmpa0),d0
 	lsr.b	#3,d2
 	lsr.w	d2,d0							;octave shifted
 	rts
@@ -1824,16 +1825,18 @@ mds_pitch_update
 ;----------------------------------------------------------------------
 ; portamento update
 ;----------------------------------------------------------------------
+	move.w	d0,d2
+	sub.w	t_pitch(twork),d2				;d2=porta_delta
+	beq.s	@skip_porta
+
 	clr.w	d3
 	move.b	t_pta(twork),d3
 	beq.s	@porta_done
 
-	move.w	d0,d2
-	sub.w	t_pitch(twork),d2				;d2=porta_delta
-	beq.s	@porta_done
+	move.w	d2,-(sp)						;get step >> 8
+	move.b	(sp)+,d1
+	ext.w	d1
 
-	move.w	d2,d1							;get step
-	asr.w	#8,d1
 	bpl.s	@add_step
 	subq.w	#2,d1
 @add_step
@@ -1850,13 +1853,16 @@ mds_pitch_update
 	move.w	d1,d0
 @porta_done
 	move.w	d0,t_pitch(twork)
+@skip_porta
 
 ;----------------------------------------------------------------------
 ; pitch envelope update
 ;----------------------------------------------------------------------
 	move.w	t_peg_addr(twork),d1
-	beq.s	@no_peg
+	bne.s	@do_peg
+	rts
 
+@do_peg
 	btst	#nf+nf_key_on,flag
 	beq.s	@no_retrig
 	clr.w	t_peg_delay(twork)
@@ -1890,7 +1896,6 @@ mds_pitch_update
 	blt.s	@no_jump
 
 	move.w	d2,t_peg_delay(twork)			; jump to position
-@no_peg
 	rts
 
 @no_jump
@@ -1901,9 +1906,10 @@ mds_pitch_update
 
 @delay_not_done
 	addq.b	#2,d3							; increase delay
-	beq.s	@no_peg							; ff = endless
+	beq.s	@return							; ff = endless
 	subq.b	#1,d3
 	move.b	d3,t_peg_delay(twork)
+@return
 	rts
 
 ;======================================================================
@@ -1913,7 +1919,7 @@ mds_pitch_update
 ;  d0 - calculated pitch
 ;  d4 - operator mask (bit 6-3 = operators)
 ; TRASHES:
-;  tmpa1,d0,d1,d2
+;  tmpa1,d0-d3
 mds_fm3_update_pitch
 	bsr.w	mds_get_fm_pitch
 	mds_z80_wait_fm
@@ -2054,15 +2060,17 @@ mds_fm_update_vol
 	lea		4+t_fm_tl(twork),tmpa1
 	move.b	t_vol(twork),d3
 	bpl.s	@no_vol_table
-	cmpi.b	#$90,d3
-	bcc.s	@no_vol_table
+	cmpi.b	#$90,d3							; clamp to $8f
+	scc		d0
+	or.b	d0,d3
 	andi.w	#$000f,d3
 	move.b	mds_fm_vol_table(pc,d3),d3
 
 @no_vol_table
 	add.b	w_volume(work,rnum),d3
-	move.b	t_fm_alg(twork),d4
-	andi.w	#$0007,d4
+
+	moveq	#7,d4
+	and.w	t_fm_alg-1(twork),d4
 
 	moveq	#3,d2
 	move.w	chnid,d1
@@ -2116,8 +2124,9 @@ mds_fm3_update_vol
 	lea		4+w_fm3_tl(work),tmpa1
 	move.b	t_vol(twork),d3
 	bpl.s	@no_vol_table
-	cmpi.b	#$90,d3
-	bcc.s	@no_vol_table
+	cmpi.b	#$90,d3							; clamp to $8f
+	scc		d0
+	or.b	d0,d3
 	andi.w	#$000f,d3
 	move.b	mds_fm_vol_table(pc,d3),d3
 
@@ -2148,8 +2157,8 @@ mds_fm3_update_vol
 	btst	#3+0,d4
 	bne.s	@skip_op1
 @write_op
-	move.b	w_fm3_alg(work),d1
-	andi.w	#$0007,d1
+	moveq	#7,d1
+	and.w	w_fm3_alg-1(work),d1
 	cmp.b	mds_fm_op_table(pc,d1),d2
 	bcs.s	@write_vol
 	add.b	d3,d0
@@ -2194,8 +2203,8 @@ mds_fm_cutoff
 	move.b	chnid,$4001(zram)				; 12 cycles + 2 nop
 
 mds_fm3_cutoff
-	move.w	chnid,d1
-	andi.b	#$03,d1
+	moveq	#3,d1
+	and.w	chnid,d1
 	swap	chnid
 
 	move.b	#$80,d0							; rr=max
@@ -2350,11 +2359,11 @@ mds_fm0_update
 	bra.w	mds_fm3_update_pitch
 
 @no_fm3_pitch
-	move.w	d0,d3
+	move.w	d0,d4
 	bsr.w	mds_get_fm_pitch
-	move.b	chnid,d1
+	moveq	#3,d1
+	and.w	chnid,d1
 	swap	chnid
-	andi.b	#3,d1
 	addi.b	#$a4,d1
 	mds_z80_wait_fm
 	move.b	d1,0(zram,chnid)
@@ -2362,7 +2371,7 @@ mds_fm0_update
 	move.b	d0,1(zram,chnid)				; 4+14 : 18
 	ror.w	#8,d0							; 22  :  22
 	subq.b	#4,d1							;  4  :  28
-	move.w	d3,t_last_pitch(twork)			; 12  :  40
+	move.w	d4,t_last_pitch(twork)			; 12  :  40
 	move.b	d1,0(zram,chnid)				; 14  :  54
 	nop
 	move.b	d0,1(zram,chnid)				; 4+14 : 18
@@ -2376,9 +2385,9 @@ mds_fm0_update
 	bclr	#nf+nf_pan_lfo,flag
 	beq.s	@no_lfo
 	move.b	t_fm_pan_lfo(twork),d0
-	move.b	chnid,d1
+	moveq	#3,d1
+	and.w	chnid,d1
 	swap	chnid
-	andi.b	#3,d1
 	addi.b	#$b4,d1
 	mds_z80_wait_fm
 	move.b	d1,0(zram,chnid)
@@ -2618,7 +2627,7 @@ mds_psg_update_env
 	moveq	#15,d2
 	move.b	t_vol(twork),@tvol
 	bmi.s	@no_convert
-	andi.w	#$00ff,@tvol
+	andi.w	#$007f,@tvol
 	move.b	mds_psg_vol_table(pc,@tvol),@tvol
 @no_convert
 	not.b	@tvol
@@ -2690,12 +2699,12 @@ mds_psg_update_pitch
 mds_psg_set_pitch
 	move.w	d0,t_last_pitch(twork)
 	bsr.w	mds_get_psg_pitch
-	move.b	d0,d1
-	andi.b	#$0f,d1
+	moveq	#$0f,d1
+	and.b	d0,d1
 	or.b	chnid,d1
 	move.b	d1,sound_psg
 	lsr.w	#4,d0
-	andi.b	#$7f,d1
+	andi.b	#$7f,d0
 	move.b	d0,sound_psg
 	bra.w	mds_update_return
 
@@ -2946,12 +2955,12 @@ mds_z80_init
 	lea		z80_ram+z_vtab,a1				; calculate volume tables
 	moveq	#0,d0
 @next_byte
-	move.b	d0,d1
-	eori.b	#$80,d1							;<-- for unsigned samples
+	moveq	#-128,d1						;<-- for unsigned samples
+	add.b	d0,d1
 	ext.w	d1
 	muls	(a0),d1
-	lsr.w	#8,d1
-	move.b	d1,(a1)+
+	move.w	d1,-(sp)						; use most significant byte
+	move.b	(sp)+,(a1)+
 	addq.b	#1,d0
 	bne.s	@next_byte
 	tst.w	(a0)+							; last entry?
