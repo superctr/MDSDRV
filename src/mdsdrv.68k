@@ -818,7 +818,7 @@ mds_update_priority
 @voice_not_enabled
 	lea		TSIZE(twork),twork				; next track
 	dbra	tnum,@next_voice
-	bra.w	mds_update_priority_return
+											; fall through
 
 ;======================================================================
 ; update track fading
@@ -829,14 +829,13 @@ mds_update_fade
 	move.b	d0,w_fade_rate(work)
 	bpl.w	mds_update_priority_return
 
-	move.b	w_fade_rate(work),d0
-	clr.w	d1
+	moveq	#1,d1
 	move.b	w_volume+6(work),d2
 	move.b	w_fade_target(work),d3
 
 	cmp.b	d2,d3
 	scs.b	d0								; 0xff if vol < target
-	ori.b	#1,d0
+	or.b	d1,d0							; make it +1 or -1
 
 	add.b	d0,d2							; add fade delta
 	move.b	d2,d1
@@ -859,7 +858,7 @@ mds_update_fade
 
 	move.w	w_tmask+6(work),d0
 	lea		w_track(work),twork				; first track's addr
-	move.w	#TCOUNT-1,tnum
+	moveq	#TCOUNT-1,tnum
 
 @next_track
 	btst	tnum,d0
