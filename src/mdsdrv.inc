@@ -24,7 +24,7 @@
 ;======================================================================
 ; system defines
 ;======================================================================
-MDSDRV_VER		equ		$0004		; sound driver version
+MDSDRV_VER		equ		$0006		; sound driver version
 MDSDRV_MIN_VER	equ		$0003		; minimum sequence data version
 
 RCOUNT			equ		4			; request count

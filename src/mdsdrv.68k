@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.6 220205"
+	dc.b	"MDSDRV0.6 220521"
 version_str_end
 	dc.b	0
 	even
@@ -101,7 +101,9 @@ mds_init
 	lea		TSIZE(twork),twork				; next track
 	dbra	d1,@next_track
 
-	stop_z80
+	move.w	#$100,z80_bus_request
+	move.w	#$100,z80_reset					; deassert reset
+
 	bsr.w	mds_z80_init
 
 mds_halt
@@ -179,6 +181,7 @@ mds_command
 	bra.w	@set_volume						; 0x0d
 	bra.w	@get_tempo						; 0x0e
 	bra.w	@set_tempo						; 0x0f
+	bra.w	@get_comm						; 0x10
 @cmd_max	equ (*-@cmd_table)/4
 
 ;----------------------------------------------------------------------
@@ -371,7 +374,6 @@ mds_command
 ; command 0x0e - get song tempo
 ;----------------------------------------------------------------------
 @get_tempo
-	clr.w	d0
 	add.w	d1,d1
 	move.w	w_tempo(a0,d1),d0
 	rts
@@ -380,9 +382,16 @@ mds_command
 ; command 0x0f - set song tempo
 ;----------------------------------------------------------------------
 @set_tempo
-	clr.w	d0
 	add.w	d1,d1
 	move.w	d2,w_tempo(a0,d1)
+	rts
+
+;----------------------------------------------------------------------
+; command 0x10 - get comm byte
+;----------------------------------------------------------------------
+@get_comm
+	clr.w	d0
+	move.b	w_comm(a0),d0
 	rts
 
 ;======================================================================
@@ -1093,7 +1102,7 @@ mds_update_seq
 ; fm
 ;--------------------------------------
 	adda.l	a_sdtop,tmpa0					; ptr. to ins data
-	adda.w	#24,tmpa0
+	lea		24(tmpa0),tmpa0
 	cmpi.b	#2,@cmd
 	bne.s	@cmd_ins_not_fm3
 	move.l	(tmpa0)+,w_fm3_tl(work)			; fm3 stuff
@@ -1863,35 +1872,37 @@ mds_pitch_update
 	rts
 
 @do_peg
+	bmi.s	@extended
+
 	btst	#nf+nf_key_on,flag
 	beq.s	@no_retrig
 	clr.w	t_peg_delay(twork)
+
 @no_retrig
+	clr.w	d2
+	move.b	t_peg_pos(twork),d2
+	add.w	d2,d2
+	add.w	d2,d2
+	add.w	d2,d1
+	lea		2(a_sdtop,d1),tmpa1
 
-	movea.w	d1,tmpa1
-	adda.l	a_sdtop,tmpa1
-
-	clr.w	d1
-	move.b	t_peg_pos(twork),d1
-	add.w	d1,d1
-	add.w	d1,d1
 	move.w	t_peg_mod(twork),d2				; d2=modulator
 
 	move.b	t_peg_delay(twork),d3
 	bne.s	@no_reset
-	move.w	0(tmpa1,d1),d2					; d2=init modulator
+	move.w	-2(tmpa1),d2					; d2=init modulator
 
 @no_reset
-	move.b	2(tmpa1,d1),d4
+	move.b	(tmpa1)+,d4
 	ext.w	d4
 	add.w	d2,d4							; add delta
 	move.w	d4,t_peg_mod(twork)
 	add.w	d4,d0
 
-	cmp.b	3(tmpa1,d1),d3					; delay done?
+	cmp.b	(tmpa1)+,d3						; delay done?
 	bne.s	@delay_not_done
 
-	move.w	4(tmpa1,d1),d2					; next command
+	move.w	(tmpa1),d2						; next command
 	subi.w	#$7f00,d2
 	blt.s	@no_jump
 
@@ -1899,9 +1910,8 @@ mds_pitch_update
 	rts
 
 @no_jump
-	lsr.w	#2,d1
-	addq.b	#1,d1
-	move.w	d1,t_peg_delay(twork)			; next position
+	clr.b	t_peg_delay(twork)
+	addq.b	#1,t_peg_pos(twork)				; next position
 	rts
 
 @delay_not_done
@@ -1910,6 +1920,40 @@ mds_pitch_update
 	subq.b	#1,d3
 	move.b	d3,t_peg_delay(twork)
 @return
+	rts
+
+@extended
+	bclr	#15,d1
+	btst	#nf+nf_key_on,flag
+	beq.s	@ext_no_retrig
+	clr.w	t_peg_delay(twork)
+
+@ext_no_retrig
+	clr.w	d2
+	move.b	t_peg_pos(twork),d2
+	add.w	d2,d2
+	add.w	d2,d1
+	add.w	d2,d2
+	add.w	d2,d1
+	lea		2(a_sdtop,d1),tmpa1
+
+	move.w	t_peg_mod(twork),d2				; d2=modulator
+
+	move.b	t_peg_delay(twork),d3
+	bne.s	@ext_no_reset
+	move.w	-2(tmpa1),d2					; d2=init modulator
+
+@ext_no_reset
+	move.w	(tmpa1)+,d4
+	add.w	d2,d4
+	move.w	d4,t_peg_mod(twork)
+	add.w	d4,d0
+
+	cmp.b	(tmpa1)+,d3						; delay done?
+	bne.s	@delay_not_done
+
+	move.b	(tmpa1),t_peg_pos(twork)		; next command
+	clr.b	t_peg_delay(twork)
 	rts
 
 ;======================================================================

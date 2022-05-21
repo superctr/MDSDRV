@@ -161,3 +161,8 @@ These are currently all the possible command numbers for `mds_command`.
 - **Description**: Sets the song tempo for the priority level specified
 	in `d1` to the value in `d2`.
 
+##### `get_comm`
+- **Command** `0x10`
+- **Description**: Returns in `d0` the communication byte value, set in
+	the song data.
+
