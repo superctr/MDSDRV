@@ -1713,6 +1713,14 @@ mds_check_priority
 	rts
 
 ;======================================================================
+
+mds_fm_freq_tab
+	dc.w 161,171,181,191,203,215,228,241,255,271,287,304		; 0-11
+	dc.w 322,341,361,383,406,430,455,482,511,541,574,608		; 12-23
+	dc.w 644,682,723,766,811,859,910,965,1022,1083,1147,1215	; 24-35
+	dc.w 1288,1364,1445,1531,1622,1719,1821,1929,2044			; 36-45
+
+;======================================================================
 ; get FM pitch
 ;----------------------------------------------------------------------
 ; INPUT
@@ -1725,11 +1733,12 @@ mds_get_fm_pitch
 	lsl.l	#8,d0
 	move.w	d0,d1							; upper bits of keycode
 	swap	d0
-	lea		mds_note_table(pc),tmpa1
-	move.b	mds_octave_table-mds_note_table(tmpa1,d0),d2	; octave
-	move.b	0(tmpa1,d0),d0
+
+	lea		mds_note_table(pc,d0),tmpa1
+	move.b	(tmpa1),d0
+
 	add.b	t_ins_trs(twork),d0				;freq tab displacement
-	move.l	@fm_freq_tab(pc,d0),d3
+	move.l	mds_fm_freq_tab(pc,d0),d3
 	move.w	d3,d0
 	swap	d3
 	sub.w	d3,d0
@@ -1737,13 +1746,14 @@ mds_get_fm_pitch
 	swap	d0
 	add.w	d3,d0
 	rol.w	#8,d0
-	add.b	d2,d0							;octave added
+	add.b	mds_octave_table-mds_note_table(tmpa1),d0	;octave added
 	rts
-@fm_freq_tab
-	dc.w 161,171,181,191,203,215,228,241,255,271,287,304		; 0-11
-	dc.w 322,341,361,383,406,430,455,482,511,541,574,608		; 12-23
-	dc.w 644,682,723,766,811,859,910,965,1022,1083,1147,1215	; 24-35
-	dc.w 1288,1364,1445,1531,1622,1719,1821,1929,2044			; 36-45
+
+;======================================================================
+
+mds_psg_freq_tab
+	dc.w	1710,1614,1524,1438,1357,1281,1209,1141,1077,1017,960,906
+	dc.w	855
 
 ;======================================================================
 ; get PSG pitch
@@ -1758,10 +1768,10 @@ mds_get_psg_pitch
 	lsl.l	#8,d0
 	move.w	d0,d1							; upper bits of keycode
 	swap	d0
-	lea		mds_note_table(pc),tmpa0
-	move.b	mds_octave_table-mds_note_table(tmpa0,d0),d2	; octave
-	move.b	0(tmpa0,d0),d0
-	lea		@psg_freq_tab(pc,d0),tmpa0
+	lea		mds_note_table(pc,d0),tmpa0
+	move.b	mds_octave_table-mds_note_table(tmpa0),d2	; octave
+	move.b	(tmpa0),d0
+	lea		mds_psg_freq_tab(pc,d0),tmpa0
 	move.w	(tmpa0)+,d0
 	sub.w	(tmpa0),d0
 	mulu	d1,d0							;interpolate
@@ -1771,9 +1781,6 @@ mds_get_psg_pitch
 	lsr.b	#3,d2
 	lsr.w	d2,d0							;octave shifted
 	rts
-@psg_freq_tab
-	dc.w	1710,1614,1524,1438,1357,1281,1209,1141,1077,1017,960,906
-	dc.w	855
 
 ;======================================================================
 ; Note/octave division table

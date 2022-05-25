@@ -18,6 +18,7 @@ enum cmd_flag
 	FLG_PCM_ID = 64,
 	FLG_PEG_ID = 128,
 	FLG_FLG_ID = 256,
+	FLG_MTAB_ID = 512,
 };
 
 struct cmd_def
@@ -47,7 +48,7 @@ const struct cmd_def chn_cmd[chn_cmd_cnt] =
 	{"peg",	1, FLG_PEG_ID},			// 8 set pitch envelope
 	{"pan",	1, 0},					// 9 set panning
 	{"lfo",	1, 0},					//10 set lfo
-	{"mtab", 1, 0},					//11 set macro table
+	{"mtab", 1, FLG_MTAB_ID},		//11 set macro table
 	{"flg",	1, FLG_FLG_ID},			//12 set flag
 	{"fmcreg", 2, 0},				//13 fm channel write
 	{"fmtl", 2, 0},					//14 fm tl write

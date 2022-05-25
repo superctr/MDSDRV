@@ -38,9 +38,11 @@ enum data_type
 	DATA_LOCAL = 8,
 	DATA_SUB = 8,
 	DATA_DRUM = 9,
+	DATA_MTAB = 10,
 	DATA_TYPE_MASK = 15,
 	DATA_PARSED = 16,
-	DATA_IN_DRUM_MODE = 32
+	DATA_IN_DRUM_MODE = 32,
+	DATA_EXTENDED = 64
 };
 
 struct header_t
@@ -279,6 +281,7 @@ int read_list_chunk(uint8_t* data)
 	while(pos < riff_size)
 	{
 		uint32_t data_id;
+		uint32_t data_flag;
 
 		// chunks must be word aligned
 		if(pos & 1)
@@ -296,10 +299,14 @@ int read_list_chunk(uint8_t* data)
 			if(chunk_size < 4)
 				FAIL("glob chunk is too small\n");
 			data_id = *(uint32_t*)(data + pos + 8);
+			data_flag = data_id & 0x80000000;
+			data_id &= 0x7fffffff;
 			if(data_id > 255)
 				FAIL("data id is too high\n");
 			song.data[data_id].data = data + pos + 12;
 			song.data[data_id].length = chunk_size - 4;
+			if(data_flag)
+				song.data[data_id].type |= DATA_EXTENDED;
 			break;
 		default: // ignore all other chunks
 			break;
@@ -419,7 +426,21 @@ void analyze_track(struct header_t* header, uint8_t* data, uint32_t max_size, ui
 				{
 					if(song.max_data <= id)
 						song.max_data = id + 1;
-					song.data[id].type = DATA_PEG;
+					song.data[id].type &= DATA_EXTENDED;
+					song.data[id].type |= DATA_PEG;
+				}
+			}
+			else if(def->flag & FLG_MTAB_ID)
+			{
+				uint8_t id = data[pos];
+				if(id--)
+				{
+					uint32_t addr = song.tbase + read_be16(seq_chunk + song.tbase + id * 2);
+					if(song.max_data <= id)
+						song.max_data = id + 1;
+					song.data[id].type = DATA_MTAB | DATA_PARSED;
+					song.data[id].data = seq_chunk + addr;
+					song.data[id].length = seq_size - addr;
 				}
 			}
 			else if(def->flag & FLG_PCM_ID)
@@ -593,6 +614,14 @@ void emit_track(struct header_t* header, uint16_t track_id)
 			{
 				const struct cmd_def* def = &chn_cmd[cmd - chn_cmd_base(0)];
 				if(def->flag & FLG_PEG_ID)
+				{
+					uint8_t id = data[pos++];
+					if(id--)
+						EMIT(",%s",song.data[id].alias);
+					else
+						EMIT(",0");
+				}
+				else if(def->flag & FLG_MTAB_ID)
 				{
 					uint8_t id = data[pos++];
 					if(id--)
@@ -810,7 +839,7 @@ void emit_peg(struct header_t* header)
 		else
 		{
 			EMIT("$%04x", cmd);
-			if(event_count == 2)
+			if(event_count == max_events_per_line)
 			{
 				int16_t initial = (data[pos-4] << 8) | data[pos-3];
 				int8_t delta = data[pos-2];
@@ -826,6 +855,71 @@ void emit_peg(struct header_t* header)
 		event_count %= max_events_per_line;
 	}
 }
+
+void emit_expeg(struct header_t* header)
+{
+	const uint32_t max_events_per_line = 3;
+	uint32_t event_count = 0;
+
+	uint32_t pos = 0, max_size = header->length;
+	uint8_t* data = header->data;
+
+	while(pos < max_size)
+	{
+		uint16_t cmd = (data[pos] << 8) | (data[pos + 1]);
+		pos += 2;
+
+		if(event_count++ == 0)
+			EMIT("\n\tdc.w\t");
+		else
+			EMIT(",");
+
+		EMIT("$%04x", cmd);
+		if(event_count == max_events_per_line)
+		{
+			int16_t initial = (data[pos-6] << 8) | data[pos-5];
+			int16_t delta = (data[pos-4] << 8) | data[pos-3];
+			uint8_t wait = data[pos-2];
+			uint8_t next = data[pos-1];
+			EMIT(" ; from %6d add %3d", initial, delta);
+			if(wait == 0xff)
+				EMIT(" forever");
+			else
+				EMIT(" for %3d frames", wait + 1);
+			EMIT(", go to pos %d", next);
+		}
+
+		event_count %= max_events_per_line;
+	}
+}
+
+void emit_mtab(struct header_t* header)
+{
+	const uint32_t max_events_per_line = 8;
+	uint32_t event_count = 0;
+
+	uint32_t pos = 0, max_size = header->length;
+	uint8_t* data = header->data;
+
+	while(pos < max_size)
+	{
+		uint16_t cmd = (data[pos] << 8) | (data[pos + 1]);
+		pos += 2;
+
+		if(event_count++ == 0)
+			EMIT("\n\tdc.w\t");
+		else
+			EMIT(",");
+
+		EMIT("$%04x", cmd);
+
+		if((cmd & 0xff00) == 0x8000)
+			break;
+
+		event_count %= max_events_per_line;
+	}
+}
+
 //=====================================================================
 
 int emit_song()
@@ -859,7 +953,7 @@ int emit_song()
 		uint32_t type_index = data_type_count[song.data[i].type & DATA_TYPE_MASK]++;
 		uint32_t rsoffset = 0;
 
-		switch(song.data[i].type & DATA_TYPE_MASK)
+		switch(song.data[i].type & (DATA_TYPE_MASK|DATA_EXTENDED))
 		{
 			case DATA_SUB:
 				sprintf(song.data[i].alias, "@PAT_%d", type_index);
@@ -887,6 +981,16 @@ int emit_song()
 				sprintf(song.data[i].alias, "@PEG_%d", type_index);
 				sprintf(song.data[i].label, "sd_peg_%08x", song.data[i].hash);
 				break;
+			case DATA_PEG|DATA_EXTENDED:
+				rsoffset = 1;
+				sprintf(song.data[i].alias, "@EXPEG_%d", type_index);
+				sprintf(song.data[i].label, "sd_expeg_%08x", song.data[i].hash);
+				break;
+			case DATA_MTAB:
+				rsoffset = 1;
+				sprintf(song.data[i].alias, "@MTAB_%d", type_index);
+				sprintf(song.data[i].label, "@M%d", type_index);
+				break;
 			default:
 				sprintf(song.data[i].alias, "");
 				sprintf(song.data[i].label, "");
@@ -899,6 +1003,8 @@ int emit_song()
 		{
 			if(song.data[i].type & DATA_LOCAL)
 				EMIT("\tdc.w\t%s-@BASE\n", song.data[i].label);
+			else if(song.data[i].type & DATA_EXTENDED)
+				EMIT("\tdc.w\t(%s-sdtop)|$8000\n", song.data[i].label);
 			else
 				EMIT("\tdc.w\t%s-sdtop\n", song.data[i].label);
 		}
@@ -920,8 +1026,16 @@ int emit_song()
 		if(song.data[i].type & DATA_LOCAL)
 		{
 			EMIT(";========================================================================\n");
-			EMIT("\n%s", song.data[i].label);
-			emit_track(&song.data[i], (song.data[i].type & DATA_IN_DRUM_MODE) ? 0x200 : 0);
+			if((song.data[i].type & DATA_TYPE_MASK) == DATA_MTAB)
+			{
+				EMIT("\n\teven\n%s", song.data[i].label);
+				emit_mtab(&song.data[i]);
+			}
+			else
+			{
+				EMIT("\n%s", song.data[i].label);
+				emit_track(&song.data[i], (song.data[i].type & DATA_IN_DRUM_MODE) ? 0x200 : 0);
+			}
 			EMIT("\n\n");
 		}
 	}
@@ -932,7 +1046,7 @@ int emit_song()
 		{
 			EMIT("\n\tif ~def(%s)", song.data[i].label);
 			EMIT("\n%s", song.data[i].label);
-			switch(song.data[i].type & DATA_TYPE_MASK)
+			switch(song.data[i].type & (DATA_TYPE_MASK|DATA_EXTENDED))
 			{
 				case DATA_FM:
 					emit_fm(&song.data[i]);
@@ -944,6 +1058,9 @@ int emit_song()
 					break;
 				case DATA_PEG:
 					emit_peg(&song.data[i]);
+					break;
+				case DATA_PEG|DATA_EXTENDED:
+					emit_expeg(&song.data[i]);
 					break;
 				default:
 					break;
