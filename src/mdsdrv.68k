@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.6 220521"
+	dc.b	"MDSDRV0.6 220526"
 version_str_end
 	dc.b	0
 	even
@@ -296,13 +296,13 @@ mds_command
 @no_stop
 	andi.b	#$7f,d0
 	lsr.w	#8,d1							; get fade rate
-	move.b	@fade_rate_table(pc,d1),w_fade_rate(a0)
+	move.b	mds_fade_rate(pc,d1),w_fade_rate(a0)
 
 	move.b	d0,w_fade_target(a0)
 	mds_ei
 	rts
 
-@fade_rate_table
+mds_fade_rate	equ	*
 	dc.b	$01,$11,$49,$55,$57,$77,$7f,$ff
 
 ;----------------------------------------------------------------------
@@ -588,6 +588,7 @@ mds_handle_request
 @tbase		equr	tmpa1
 @reqdata	equr	d0
 @tempreg	equr	d1
+@maxid		equr	d2						; max song ID
 @tempo		equr	d2						; global tempo
 @zero		equr	d2
 @tcount		equr	d3
@@ -608,16 +609,44 @@ mds_handle_request
 ;----------------------------------------------------------------------
 ; start song playback
 ;----------------------------------------------------------------------
-	move.l	a_sdtop,@zero					; check that sdtop is valid
+	move.l	a_sdtop,@tempreg				; check that sdtop is valid
 	beq.w	mds_handle_request_return
-	exg		@zero,tmpa0
+	move.l	@tempreg,tmpa0
+;	exg		@zero,tmpa0
 
-	cmp.w	-2(a_sdtop),@reqdata			; check if out of bounds
+;----------------------------------------------------------------------
+; BGM fade-in
+;----------------------------------------------------------------------
+	move.w	-2(a_sdtop),@maxid
+
+	cmp.w	@maxid,@reqdata					; check if out of bounds
+	bcs.s	@no_fadein
+
+	move.w	@reqdata,@tempreg				; get fade in rate
+	andi.w	#$3c00,@tempreg
+	beq.w	mds_handle_request_return		; no fade in requested
+
+	eor.w	@tempreg,@reqdata
+	cmp.w	@maxid,@reqdata					; may still be out of bound
 	bhi.w	mds_handle_request_return
 
+	rol.w	#6,@tempreg
+	lea		mds_fade_rate(pc),@tbase
+	move.b	-8(@tbase,@tempreg),w_fade_rate(work)
+
+	moveq	#-122,@tempreg					; set the V-bit later
+	bra.s	@read_header
+
+@no_fadein
+	moveq	#(RCOUNT<<1)-2,@tempreg
+
+;	cmp.w	-2(a_sdtop),@reqdata			; check if out of bounds
+;	bhi.w	mds_handle_request_return
+
 ;----------------------------------------------------------------------
-; start song playback
+; read song header
 ;----------------------------------------------------------------------
+@read_header
 	move.w	w_gtempo(work),@tempo
 	subq.w	#1,@tempo
 	move.w	@tempo,w_tempo(work,rnum)		; initial tempo
@@ -634,8 +663,30 @@ mds_handle_request
 	move.l	tmpa0,@tbase
 	adda.w	(tmpa0)+,@tbase					; song base offset
 
-	cmpi.b	#(RCOUNT<<1)-2,rnum				; get initial volume
-	sne.b	@tempreg
+;----------------------------------------------------------------------
+; handle initial volume
+;----------------------------------------------------------------------
+	cmp.b	@tempreg,rnum
+	bvc.s	@vol_normal
+
+;--------------------------------------
+; fading in a BGM
+;--------------------------------------
+	move.b	w_bgm_volume(work),@tempreg
+	add.b	(tmpa0)+,@tempreg
+	bpl.s	@fade_no_ovf
+	moveq	#$7f,@tempreg
+@fade_no_ovf
+	move.b	@tempreg,w_fade_target(work)
+	bclr	#pe_fade_stop,w_pcm_mode(work)
+	move.w	#$500f,w_volume(work,rnum)		; starting volume
+	bra.s	@get_track_count
+
+;--------------------------------------
+; starting a SE or BGM track normally
+;--------------------------------------
+@vol_normal
+	sne.b	@tempreg						; 0 if BGM track
 	andi.w	#$01,@tempreg
 	move.b	w_bgm_volume(work,@tempreg),@tempreg
 	add.b	(tmpa0)+,@tempreg
@@ -646,6 +697,10 @@ mds_handle_request
 	bsr.w	mds_convert_vol
 	move.b	@reqdata,w_volume+1(work,rnum)
 
+;----------------------------------------------------------------------
+; get track count...
+;----------------------------------------------------------------------
+@get_track_count
 	clr.w	@tcount
 	move.b	(tmpa0)+,@tcount				; track count
 	subq.b	#1,@tcount

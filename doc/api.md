@@ -39,8 +39,12 @@ Functions
 - **Notes**:
 	- Calling this function will stop all already playing tracks with
 		that priority level.
-	- Request sound number `#0` to stop all tracks on the specified
+	- Request sound number `0` to stop all tracks on the specified
 		priority level.
+	- Add `$2000 + (fade_speed << 10)` to the sound number to fade in
+		the sound. Only works for BGM tracks. Bits 10-12 control the
+		fading speed. For example, adding `$2000` will fade in slowly
+		and `$3c00` will fade in quickly.
 	- Requesting an invalid sound number will _not_ crash the sound
 		driver.
 
