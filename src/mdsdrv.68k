@@ -604,13 +604,13 @@ mds_handle_request
 ;----------------------------------------------------------------------
 	bclr	#rf_active,@reqdata
 	move.w	@reqdata,w_request(work,rnum)	; store request flag
-	beq.w	mds_handle_request_return		; 0 will do nothing
+	beq.s	@invalid						; 0 will do nothing
 
 ;----------------------------------------------------------------------
 ; start song playback
 ;----------------------------------------------------------------------
 	move.l	a_sdtop,@tempreg				; check that sdtop is valid
-	beq.w	mds_handle_request_return
+	beq.s	@invalid
 	move.l	@tempreg,tmpa0
 ;	exg		@zero,tmpa0
 
@@ -624,11 +624,11 @@ mds_handle_request
 
 	move.w	@reqdata,@tempreg				; get fade in rate
 	andi.w	#$3c00,@tempreg
-	beq.w	mds_handle_request_return		; no fade in requested
-
+	beq.s	@invalid						; no fade in requested
 	eor.w	@tempreg,@reqdata
-	cmp.w	@maxid,@reqdata					; may still be out of bound
-	bhi.w	mds_handle_request_return
+	beq.s	@invalid						; song ID is 0
+	cmp.w	@maxid,@reqdata
+	bhi.s	@invalid						; song ID out of bounds
 
 	rol.w	#6,@tempreg
 	lea		mds_fade_rate(pc),@tbase
@@ -636,6 +636,9 @@ mds_handle_request
 
 	moveq	#-122,@tempreg					; set the V-bit later
 	bra.s	@read_header
+
+@invalid
+	bra.w	mds_handle_request_return
 
 @no_fadein
 	moveq	#(RCOUNT<<1)-2,@tempreg
@@ -1631,6 +1634,8 @@ mds_update_mtab
 	bra.w	@mtab_pan				;$87
 	bra.w	@mtab_lfo				;$88
 	bra.w	@mtab_nmode				;$89
+	bra.w	@mtab_dtnadd			;$8a
+	bra.w	@mtab_dtnsub			;$8b
 
 ;----------------------------------------------------------------------
 ; $80 00 - end macro table
@@ -1745,6 +1750,24 @@ mds_update_mtab
 	bset	#nf+nf_nmode,flag
 	bra.w	@next_command
 
+;----------------------------------------------------------------------
+; $8a nn - detune add
+;----------------------------------------------------------------------
+@mtab_dtnadd
+	add.b	d1,t_dtn(twork)
+	bvc.w	@next_command
+	addq.b	#1,t_trs(twork)
+	bra.w	@next_command
+
+;----------------------------------------------------------------------
+; $8b nn - detune sub
+;----------------------------------------------------------------------
+@mtab_dtnsub
+	sub.b	d1,t_dtn(twork)
+	bvc.w	@next_command
+	subq.b	#1,t_trs(twork)
+	bra.w	@next_command
+
 ;======================================================================
 ; check channel priority
 ;----------------------------------------------------------------------
@@ -1769,6 +1792,27 @@ mds_check_priority
 
 ;======================================================================
 
+	if 1
+;======================================================================
+; get FM pitch (No key fraction)
+;----------------------------------------------------------------------
+; INPUT
+;   d0 - key code (in upper word)
+; OUTPUT
+;   d0 - pitch value
+; TRASHES
+;   tmpa1, d1-d3
+mds_get_fm_note_pitch
+	swap	d0
+	lea		mds_note_table-100(pc,d0),tmpa1
+	move.b	100(tmpa1),d0
+	add.b	t_ins_trs(twork),d0				;freq tab displacement
+	move.w	mds_fm_freq_tab(pc,d0),d0
+	rol.w	#8,d0
+	add.b	mds_octave_table-mds_note_table+100(tmpa1),d0 ;octave added
+	rts
+	endc
+
 mds_fm_freq_tab
 	dc.w 161,171,181,191,203,215,228,241,255,271,287,304		; 0-11
 	dc.w 322,341,361,383,406,430,455,482,511,541,574,608		; 12-23
@@ -1787,11 +1831,13 @@ mds_fm_freq_tab
 mds_get_fm_pitch
 	lsl.l	#8,d0
 	move.w	d0,d1							; upper bits of keycode
-	swap	d0
+	if def(mds_get_fm_note_pitch)
+		beq.s	mds_get_fm_note_pitch
+	endc
 
+	swap	d0
 	lea		mds_note_table(pc,d0),tmpa1
 	move.b	(tmpa1),d0
-
 	add.b	t_ins_trs(twork),d0				;freq tab displacement
 	move.l	mds_fm_freq_tab(pc,d0),d3
 	move.w	d3,d0

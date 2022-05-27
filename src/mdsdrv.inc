@@ -60,6 +60,7 @@ chnid			equr	d5			; channel id
 ;======================================================================
 rf_active		equ		15			; request is active
 rf_stop			equ 	14			; stop previous track
+rf_fade_in		equ 	13			; fade in track
 
 ;======================================================================
 ; note flags during voice processing (btst #nf+nf_enabled)

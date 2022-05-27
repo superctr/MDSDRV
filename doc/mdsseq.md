@@ -622,6 +622,9 @@ listed in this table may result in a crash or other bad behavior.
 | `87` | Set panning. FM only                                       |
 | `88` | Set LFO sensitivity. FM only                               |
 | `89` | Set PSG noise mode. PSG only                               |
+| `8A` | Add argument byte to detune. Increment transpose on carry  |
+| `8B` | Subtract argument byte from detune. Decrement transpose on |
+|      | carry.                                                     |
 | `C0-FF` | Write `arg` to the FM channel register specified by     |
 |         | `cmd<<2`.                                               |
 
