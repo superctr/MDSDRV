@@ -620,7 +620,7 @@ mds_handle_request
 	move.w	-2(a_sdtop),@maxid
 
 	cmp.w	@maxid,@reqdata					; check if out of bounds
-	bcs.s	@no_fadein
+	bls.s	@no_fadein
 
 	move.w	@reqdata,@tempreg				; get fade in rate
 	andi.w	#$3c00,@tempreg
@@ -1756,7 +1756,7 @@ mds_update_mtab
 @mtab_dtnadd
 	add.b	d1,t_dtn(twork)
 	bvc.w	@next_command
-	addq.b	#1,t_trs(twork)
+	addq.b	#1,t_note(twork)
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
@@ -1765,7 +1765,7 @@ mds_update_mtab
 @mtab_dtnsub
 	sub.b	d1,t_dtn(twork)
 	bvc.w	@next_command
-	subq.b	#1,t_trs(twork)
+	subq.b	#1,t_note(twork)
 	bra.w	@next_command
 
 ;======================================================================
