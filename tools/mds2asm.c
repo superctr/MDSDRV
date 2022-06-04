@@ -7,7 +7,7 @@
 	Compile with `gcc -o mds2asm mds2asm.c`, run with `mds2asm input.mds > output.asm`
 
 	Note: currently, PCM data blocks are not being read from the MDS file.
-	Some rarely used commands (lpbl for example) might not be read properly.
+	Some rarely used commands might not be read properly.
 
 	/ctr 2021-01-03
 */
@@ -676,7 +676,7 @@ void emit_track(struct header_t* header, uint16_t track_id)
 				}
 				else if(def->flag & FLG_LPB && def->length == -2)
 				{
-					lpb_pos[lpb_stack] = (pos + 2) + ((data[pos] << 8) | data[pos+1]);
+					lpb_pos[lpb_stack] = (pos + 3) + ((data[pos] << 8) | data[pos+1]);
 					lpb_id[lpb_stack] = lpb_count++;
 					EMIT("\n\tdc.w\t%sB%d-*-2", header->label, lpb_id[lpb_stack++]); //untested
 					pos += 2;
