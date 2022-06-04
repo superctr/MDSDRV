@@ -247,12 +247,12 @@ entry2
 ; VBL INTERRUPT
 ;----------------------------------------------------------------------
 vbl
-	di										; 4
 	ex		af,af'							; 4
 	ld		a,PCM_MIN_BUFFER				; 7
 	ld		(z_min_buffer),a				; 13
 	ex		af,af'							; 4
-	ret										; 10
+	nop		; Change to "ei" ($fb) to enable the interrupt routine...
+	ret										; 4+10
 
 ;======================================================================
 ; MAIN LOOP
