@@ -43,16 +43,16 @@
 ;======================================================================
 ; REGISTER USAGE
 ;----------------------------------------------------------------------
-;	de		$0fxx		sample read position
+;	de		$1fxx		sample read position
 ;	bc		$2a80
 ;	hl		$0e00		busy flag address
 ;	ix		$xxxx		used as scratchpad
-;	iy		$0fxx		sample write position
+;	iy		$1fxx		sample write position
 ;----------------------------------------------------------------------
 ;	hl', de', bc' - reserved for the PCM playback routine
 ;----------------------------------------------------------------------
 
-	define VERSION "PCM DRIVER V3.1 for MDSDRV"
+	define VERSION "PCM DRIVER V3.2 for MDSDRV"
 
 ASM68K		equ 0
 ASMZ80		equ 0
@@ -228,10 +228,10 @@ out_dac_slow								; in 11 (rst $08), out 10
 entry2
 	im		1
 	ld		hl,z_busy
-	ld		de,z_busy+1
-	ld		bc,$01ff
-	ld		(hl),a
-	ldir
+	call	clear_mem
+	ld		hl,z_buffer
+	dec		c
+	call	clear_mem2
 
 	ld		iy,z_buffer
 
@@ -247,11 +247,11 @@ entry2
 ; VBL INTERRUPT
 ;----------------------------------------------------------------------
 vbl
-	di										; 4
 	ex		af,af'							; 4
 	ld		a,PCM_MIN_BUFFER				; 7
 	ld		(z_min_buffer),a				; 13
 	ex		af,af'							; 4
+	ei										; 4
 	ret										; 10
 
 ;======================================================================
@@ -1505,6 +1505,17 @@ m3_pcm3_pitch		equ		$+1
 	ld		(m3_pcm3_enable),a				; 13
 	xor		a								; 4
 	ret										; 16
+
+;======================================================================
+clear_mem
+	ld		bc,$00fd
+clear_mem2
+	push	hl
+	pop		de
+	inc		e
+	ld		(hl),a
+	ldir
+	ret
 
 	align	64,0
 ;======================================================================

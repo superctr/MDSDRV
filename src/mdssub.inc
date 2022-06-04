@@ -67,9 +67,9 @@ z_pcm3_addr		equ		z_pcm3+4
 z_pcm3_count	equ		z_pcm3+6
 
 z_stack			equ		$0f00
-z_buffer		equ		$0f00
+z_buffer		equ		$1f00
 
-z_vtab			equ		$1000
+z_vtab			equ		$0f00
 
 z_pcm_load		equ		z_load
 
@@ -84,16 +84,20 @@ z_pcm_load		equ		z_load
 ;----------------------------------------------------------------------
 ; return volume in d1
 mds_z80_get_vol	macro
+	moveq	#15,d2
 	move.b	t_vol(twork),d1
 	bmi.s	@no_conversion\@
+	ext.w	d1
 	bsr.w	mds_pcm_convert_vol
 @no_conversion\@
-	sub.b	1+w_volume(work,rnum),d1
-	bmi.s	@no_clamp\@
-	clr.b	d1
-@no_clamp\@
 	not.b	d1
-	and.b	#$1f,d1
+	and.b	d2,d1
+	add.b	1+w_volume(work,rnum),d1
+	cmp.b	d2,d1
+	bcs.s	@no_clamp\@
+	move.b	d2,d1
+@no_clamp\@
+	add.b	d2,d1
 	endm
 
 ;======================================================================
