@@ -49,7 +49,9 @@ main:
 	move.w	d0,r_pcount0
 	move.w	d0,r_pcount1
 
-	move.w	#$0700,r_dma_delay
+; max for 3 channel = 180 somewhere?
+; max for 2 channel
+	move.w	#$0400,r_dma_delay
 
 	lea		print_instructions(pc),a0
 	bsr.w	print_command
@@ -94,19 +96,19 @@ read_input:
 	lea		r_request,a0
 	move.w	joy1_press,d0
 	btst	#joy_bit_up,d0
-	bne.s	@up_pressed
+	bne.w	@up_pressed
 	btst	#joy_bit_down,d0
-	bne.s	@down_pressed
-;	btst	#joy_bit_left,d0
-;	bne		@left_pressed
-;	btst	#joy_bit_right,d0
-;	bne		@right_pressed
+	bne.w	@down_pressed
+	btst	#joy_bit_left,d0
+	bne		@left_pressed
+	btst	#joy_bit_right,d0
+	bne		@right_pressed
 	btst	#joy_bit_a,d0
-	bne.s	@a_pressed
+	bne.w	@a_pressed
 	btst	#joy_bit_b,d0
-	bne.s	@b_pressed
+	bne.w	@b_pressed
 	btst	#joy_bit_c,d0
-	bne.s	@c_pressed
+	bne.w	@c_pressed
 	btst	#joy_bit_x,d0
 	bne.w	@x_pressed
 	btst	#joy_bit_y,d0
@@ -126,6 +128,16 @@ read_input:
 	cmp.w	#SE_MAX,(a0)
 	beq.s	@exit
 	addq.w	#1,(a0)
+	rts
+@left_pressed
+	cmp.w	#$0000,r_dma_delay
+	beq.s	@exit
+	sub.w	#$0080,r_dma_delay
+	rts
+@right_pressed
+	cmp.w	#$0a00,r_dma_delay
+	beq.s	@exit
+	add.w	#$0080,r_dma_delay
 	rts
 @a_pressed	;start track
 	move.w	(a0),d0
@@ -218,6 +230,7 @@ print_options:
 ; Print track struct data descriptions
 ;--------------------------------------------------------------------
 print_driver_text:
+	rts
 	clr.w	d1
 	lea		print_track_data_begin(pc),a0
 	bsr.w	print_command
@@ -314,6 +327,8 @@ print_counters:
 	p_hex_w		r_pcount0
 	p_shift		0,5
 	p_hex_w		r_pcount1
+	p_pos		3,12
+	p_hex_w		r_dma_delay
 	p_end
 	even
 
@@ -322,17 +337,17 @@ print_counters:
 ;--------------------------------------------------------------------
 vbl:
 	movem.l	d0-d7/a0-a6,-(sp)
-	bsr.w	pad_read
 
 	move.w	r_dma_delay,d0
 @burn_cycles
 	dbf		d0,@burn_cycles
-
 	stop_z80
 ;	move.b	z80_ram+z_vbl_ack,r_z80_load
 	move.b	#$ff,z80_ram+z_vbl_ack
 	move.b	z80_ram+z_pcm_load,r_z80_load
 	start_z80
+
+	bsr.w	pad_read
 
 ;	move.w	vdp_counter,d0
 ;	move.w	d0, r_pcount0
@@ -360,6 +375,10 @@ print_instructions
 	p_palette	0
 	p_pos		1,2
 	p_text		"MDSDRV Test Program"
+	p_pos		3,2
+	p_text		"DMA Delay:"
+	p_pos		4,2
+	p_text		"Left/right to adjust value"
 	p_pos		24,24
 	p_text		"Up/Down: Select"
 	p_shift		1,-1

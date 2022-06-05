@@ -57,7 +57,17 @@
 ASM68K		equ 0
 ASMZ80		equ 0
 
-PCM_MIN_BUFFER	equ		40
+; Minimum buffer threshold for the VBL DMA wait routine.
+; If the # of samples in the buffer falls below this value, the VBL
+; routine will temporarily stop playing back samples, resulting in
+; reduced sound quality.
+PCM_MIN_BUFFER		equ		35
+; Default buffer fill level.
+; Higher values introduce lag but allows longer DMA waits before the
+; buffer is empty. However if the average DMA wait is too long, the
+; buffer may not be able to fill up to this level anyway.
+PCM_DEFAULT_BUFFER	equ		100
+; Default to 2 channel mixing.
 DEFAULT_MODE	equ		2
 
 	include "mdssub.inc"
@@ -260,9 +270,9 @@ vbl
 	ld		a,$0e
 	cp		h
 	jr		nz,.no_exx
-;	ld		a,$2a
-;	cp		b
-;	jr		nz,.no_exx
+;	ld		a,$2a				;don't think this is needed
+;	cp		b					;the above checks should be enough to
+;	jr		nz,.no_exx			;be sure we're in the exx register set
 	ld		(hl),l				;Clear busy status just to be safe.
 	exx
 	ld		a,$d9							; exx opcode
@@ -301,21 +311,35 @@ vbl_ack_done
 	xor		a
 	ld		(z_vbl_ack),a
 
+vbl_busy_write	equ		$+1
+	or		$00
+	ld		(z_busy),a
+	jr		nz,vbl_restore_fm
 vbl_exx
 	nop										; Replace with exx
-vbl_busy_write	equ		$+1
-	ld		a,$00
-	ld		(z_busy),a
 	ex		af,af'							; 4
 	ei										; 4
 	ret										; 10
+
+; Restore the DAC latch if the busy flag was set.
+; I don't really think of a case where this would be needed _unless_
+; the 68k manages to write to the YM2612 between the last DAC output
+; and exiting the VBL routine, however it seems like this is needed
+; anyway to reduce clicking noises.
+vbl_restore_fm
+	ld		a,b
+	ld		($4000),a
+	exx
+	ex		af,af'
+	ei
+	ret
 
 ;======================================================================
 ; MAIN LOOP
 ;----------------------------------------------------------------------
 entry3
 ;	ld		hl,PCM_MIN_BUFFER+(DEFAULT_MODE*256)
-	ld		hl,(220)+(DEFAULT_MODE*256)
+	ld		hl,(PCM_DEFAULT_BUFFER)+(DEFAULT_MODE*256)
 	ld		(z_min_buffer),hl
 	ld		hl,z_mode_change
 
