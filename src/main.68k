@@ -30,6 +30,7 @@ r_intcnt		rs.w	1			; Vint counter
 r_pcount0		rs.w	1			; VDP counter at beginning of sound driver
 r_pcount1		rs.w	1			; VDP counter at end of sound driver
 r_z80_load		rs.w	1			; Z80 load
+r_dma_delay		rs.w	1			; Fake DMA
 r_pause			rs.b	1			; pause flag
 r_attenuate		rs.b	1			; attenuate flag
 				rs.w	2
@@ -47,6 +48,8 @@ main:
 	move.w	d0,r_intcnt
 	move.w	d0,r_pcount0
 	move.w	d0,r_pcount1
+
+	move.w	#$0700,r_dma_delay
 
 	lea		print_instructions(pc),a0
 	bsr.w	print_command
@@ -81,7 +84,7 @@ main_loop:
 	bsr.w	read_input
 	bsr.w	print_counters
 	bsr.w	print_options
-	bsr.w	print_driver_values
+;	bsr.w	print_driver_values
 	bra.w	main_loop
 
 ;====================================================================
@@ -320,6 +323,16 @@ print_counters:
 vbl:
 	movem.l	d0-d7/a0-a6,-(sp)
 	bsr.w	pad_read
+
+	move.w	r_dma_delay,d0
+@burn_cycles
+	dbf		d0,@burn_cycles
+
+	stop_z80
+;	move.b	z80_ram+z_vbl_ack,r_z80_load
+	move.b	#$ff,z80_ram+z_vbl_ack
+	move.b	z80_ram+z_pcm_load,r_z80_load
+	start_z80
 
 ;	move.w	vdp_counter,d0
 ;	move.w	d0, r_pcount0

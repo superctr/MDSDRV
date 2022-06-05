@@ -481,7 +481,7 @@ pad_read:
 	read_pad_port			; - 0 s a 1 1 1 1 - 1 c b r l d u
 ;--------------------------------------
 ; Get z80 load while we're stopped (ctr edit)
-	move.b	z80_ram+z_pcm_load,r_z80_load
+;	move.b	z80_ram+z_pcm_load,r_z80_load
 ;--------------------------------------
 	start_z80
 	andi.w	#0x0F00,d0		; 0 0 0 0 1 1 1 1 0 0 0 0 0 0 0 0
