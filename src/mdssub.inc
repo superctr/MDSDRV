@@ -31,6 +31,8 @@ z_mode_change	equ		$0e02	; Set to 1 to change mixing mode
 z_key_on		equ		$0e03	; Set to 1 after setting Key on
 z_min_buffer	equ		$0e04	; Requested minimum buffer size
 z_mode			equ		$0e05	; Current mixing mode
+z_vbl_ack		equ		$0e06	; DMA acknowledgement from main CPU
+
 
 z_dummy			equ		$0e06	; just a dummy variable to burn cycles
 
