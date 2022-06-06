@@ -33,13 +33,86 @@ scan and make sure it only reads from the buffer while a DMA is
 ongoing. MDSDRV contains a buffer, however the Z80 cannot by itself
 determine if a DMA is (or will be) ongoing.
 
-That leads to the question, exactly how do you tell the Z80 to stop
-reading from ROM? We will try to solve this by using several methods.
+## Using DMA protection
 
-## The Z80 PCM buffer
+After initializing MDSDRV using `mds_init`, the DMA protection is
+disabled. This allows for low latency PCM and allows the Z80 to run
+without needing an acknowledgement from the 68k. The 68k will simply
+send a bus request whenever it does a DMA, as with other sound drivers.
 
-The Z80 driver reads samples in "chunks". Depending on the mixing mode,
-the chunk is either 32 or 30 bytes long. The size of the chunk has been
+### Enabling DMA protection
+
+To enable the DMA protection, call `mds_command` with command number
+$11 (`set_pcmmode`) in d0 and set d2 to the requested buffer size.
+The byte at d1 must contain a valid PCM mixing mode or can be set to 0
+to use the previous PCM mixing mode.
+
+Example:
+
+		lea		mds_work,a0
+		moveq	#$11,d0			; set_pcmmode
+		moveq	#$2,d1			; PCM mode 2
+		move.w	#100,d2			; DMA protection on, buffer 100 bytes
+		jsr		mds_command
+		;		( or mdsdrv+$0c )
+
+The requested buffer size must be larger than 40 bytes and smaller than
+220 bytes.
+
+A buffer of 100 bytes works well for the 2 channel mixing mode. If you
+notice that the sound becomes crackly, increase the buffer size by
+changing the value of `d2`. Notice that a larger buffer will introduce
+latency.
+
+The minimum buffer size threshold is 40 bytes. If the buffer falls
+below this limit in the vertical interrupt routine, it will temporarily
+stop playing back samples, which will affect the sound quality.
+
+### Acknowledging interrupts
+
+When DMA protection is enabled, **in each vertical interrupt** the 68k
+must acknowledge to the Z80 that it has finished any DMAs and that the
+Z80 may start filling the buffer from ROM again. This is done by writing
+a non-zero value to `z_vbl_ack` (at `$A00E06`). Failure to acknowledge
+while DMA protection is enabled will result in stopped PCM playback.
+
+Example:
+
+	; Run this code in the vertical interrupts after finishing all DMAs
+		move.w	#$100,$a11100			; Send a bus request
+	@wait
+		btst	#0,$a11100
+		bne.s	@wait
+		st.b	$a00e06					; Set z_vbl_ack to $ff
+		move.w	#$000,$a11100			; Clear bus request
+
+### Disabling DMA protection
+
+While DMA protection is active, if the 68k needs to disable interrupts for
+a long time, therefore becoming unable to acknowledge the Z80, it is
+possible to disable the DMA protection by issuing `set_pcmmode` with the
+bytes in `d1` and `d2` being set to zero.
+
+Example:
+
+		lea		mds_work,a0
+		moveq	#$11,d0			; set_pcmmode
+		moveq	#0,d1			; Keep mixing mode
+		moveq	#0,d2			; Disable DMA protection
+		jsr		mds_command
+		;		( or mdsdrv+$0c )
+
+Note that when the DMA protection is re-enabled without resetting the
+PCM mode, it will take effect after a short delay (just before the
+next sample batch).
+
+## The Z80 PCM driver
+
+This section contains some information on the Z80 driver that can be
+useful when working with the DMA protection.
+
+The Z80 driver reads samples in "batches". Depending on the mixing mode,
+the batch is either 32 or 30 bytes long. The size of the batch has been
 selected to allow mixing, volume control and bank switching of multiple
 channels without causing playback interruptions (which reduces sound
 quality) or high latency.
@@ -50,78 +123,32 @@ The PCM buffer is organized as a ring buffer with a maximum width of
 ### `z_load` (`$A00E01`)
 
 This variable contains the current size of the sample buffer. It is
-updated by the Z80 after a chunk has been written to the buffer, or
+updated by the Z80 after a batch has been written to the buffer, or
 when a sample has been read from the buffer while "idle" (that is, a
-chunk is not currently being written to the buffer).
+batch is not currently being written to the buffer).
+
+If this is often being set to 40 (hex `$28`) in the vertical interrupt
+routine, that is a sign that the buffer needs to be increased
+(or simply that the Z80 was not able to buffer enough samples in time).
 
 ### `z_min_buffer` (`$A00E04`)
 
 This variable specifies the minimum size of the buffer. If the current
 size of the buffer is less than the value of this variable, the Z80
-will start reading a new chunk.
+will start reading a new batch.
 
-## The Vblank interrupt
+When DMA protection has been enabled, writing to this variable has the
+same effect as adjusting the buffer size with `set_pcmmode`.
 
-At the end of active scan, the Z80 will execute the vertical blanking
-interrupt (usually known as Vblank), assuming it is not already being
-stopped by the 68000.
+### `z_vbl_ack` (`$A00E06`)
 
-During the vblank interrupt, the Z80 sets the `z_min_buffer` variable
-to the minimal allowed buffer size (40 samples).
+The vertical interrupt acknowledge flag. At the beginning of the
+vertical interrupt, the Z80 sets this to 0. It will then wait for the
+68k to set this to a non-zero value, while depleting the sample buffer.
 
-From the 68000's perspective, DMA is usually most effective during this
-period, so this is basically a "proactive" attempt to make sure that
-the Z80 will not start reading a new chunk during the time between the
-start of the vblank interrupt and when DMA is started.
+### Z80 vertical interrupt entry point (`$A00038`)
 
-## 68000 side protection
-
-There are limitations of the current method. If the Z80 starts reading
-a chunk just before the vblank interrupt triggers, it will be unable
-to temporarily stop reading from the 68000 bus until the chunk has
-completed, since there is not enough time to read the `z_min_buffer`.
-
-Also, there may not always be a lot of time between the start of vblank
-and when the first DMA transfer occurs. The more you wait in vblank
-before starting the DMA, the bigger chance there is that the Z80 will
-gracefully handle the DMA. However, what if there simply wasn't enough
-time and the 68000 starts a DMA while the Z80 is in the middle of
-reading a chunk?
-
-Now we already know for sure that the Z80 will be stopped if it tries
-to read from the bus while a DMA is ongoing. The sound quality will be
-degraded during this DMA transfer. Now, in the worst case, the Z80 may
-request the bus just as the the DMA is started, and the glitches that
-I mentioned earlier will occur. How do we prevent them in this case?
-
-The method that SGDK currently uses (and that which I would suggest for
-now) is to from the 68000, assert a Z80 bus request and deassert it
-immediately before starting the DMA by writing the final word to the
-VDP command port.
-
-## Replenishing the buffer
-
-After you have completed your DMA, you should now restore the value of
-the `z_min_buffer` variable to let the Z80 replenish the buffer until
-the next vblank. The amount of time needed for this of course vary
-depending on how long the Z80 had to wait for the DMA.
-
-## Future ideas
-
-I am considering reading the VDP vcounter during the idle wait to allow
-the Z80 to start depleting the buffer before the vblank occurs.
-However, because the VDP is located on the 68000 bus, it would also be
-problematic to constantly read this value.
-
-Furthermore, on PAL systems, it is not possible to determine if we are
-actually in vblank from just reading the vcounter, since it wraps
-around to a value (`0xCA`) that indicates an active scanline (the
-vblank is normally started when the vcounter reaches `0xE0`). This
-method also would not work if double interlace mode (Sonic 2 two-player
-mode) is enabled, since in that case the vcounter bits are rotated.
-
-Because of this, it is possible that the DMA protection will trigger
-more than once in the same vblank period, and if we already told the
-Z80 the DMA is done, it would not buffer any samples during the next
-frame!
+The DMA protection can be enabled or disabled by replacing the first
+instruction of the interrupt routine.
+For more information, read the source code of `mdssub.z80`.
 

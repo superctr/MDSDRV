@@ -43,21 +43,33 @@
 ;======================================================================
 ; REGISTER USAGE
 ;----------------------------------------------------------------------
-;	de		$0fxx		sample read position
+;	de		$1fxx		sample read position
 ;	bc		$2a80
 ;	hl		$0e00		busy flag address
 ;	ix		$xxxx		used as scratchpad
-;	iy		$0fxx		sample write position
+;	iy		$1fxx		sample write position
 ;----------------------------------------------------------------------
 ;	hl', de', bc' - reserved for the PCM playback routine
 ;----------------------------------------------------------------------
 
-	define VERSION "PCM DRIVER V3.1 for MDSDRV"
+	define VERSION "PCM DRIVER V3.2 for MDSDRV"
 
 ASM68K		equ 0
 ASMZ80		equ 0
 
-PCM_MIN_BUFFER	equ		40
+; Minimum buffer threshold for the VBL DMA wait routine.
+; If the # of samples in the buffer falls below this value, the VBL
+; routine will temporarily stop playing back samples, resulting in
+; reduced sound quality.
+PCM_MIN_BUFFER		equ		35
+; Default buffer fill level.
+; Higher values introduce lag but allows longer DMA waits before the
+; buffer is empty. However if the average DMA wait is too long, the
+; buffer may not be able to fill up to this level anyway.
+; Since DMA protection is disabled by default, this is set to a
+; lowest value (40)
+PCM_DEFAULT_BUFFER	equ		40
+; Default to 2 channel mixing.
 DEFAULT_MODE	equ		2
 
 	include "mdssub.inc"
@@ -227,11 +239,10 @@ out_dac_slow								; in 11 (rst $08), out 10
 
 entry2
 	im		1
-	ld		hl,z_busy
-	ld		de,z_busy+1
-	ld		bc,$01ff
-	ld		(hl),a
-	ldir
+	call	clear_mem
+	ld		hl,z_buffer
+	dec		c
+	call	clear_mem2
 
 	ld		iy,z_buffer
 
@@ -246,33 +257,112 @@ entry2
 ;======================================================================
 ; VBL INTERRUPT
 ;----------------------------------------------------------------------
+; to enable:
+;   replace byte at $0038 with $08  (EX AF,AF')
+; to disable:
+;   replace byte at $0038 with $c9  (RET)
 vbl
+	ret 	; <- 68k replaces this with "ex af,af'"
+	xor		a
+	ld		(z_vbl_ack),a
+	ld		a,(z_busy)
+	ld		(vbl_busy_write),a
+
+; Check if we're currently using the exx instruction set
+	xor		a
+	cp		l
+	jr		nz,.no_exx
+	ld		a,$0e
+	cp		h
+	jr		nz,.no_exx
+;	ld		a,$2a				;don't think this is needed
+;	cp		b					;the above checks should be enough to
+;	jr		nz,.no_exx			;be sure we're in the exx register set
+	ld		(hl),l				;Clear busy status just to be safe.
+	exx
+	ld		a,$d9							; exx opcode
+	jr		.write_exx
+.no_exx
+	xor		a								; nop opcode
+.write_exx
+	ld		(vbl_exx),a
+
+;--------------------------------------
+; ACK wait loop while depleting the buffer. This part is timed
+;--------------------------------------
+vbl_loop
+;-------------------------------------------; = ?? + 57
+	ld		a,(z_vbl_ack)					; 13
+	or		a								; 4
+	jp		nz,vbl_ack_done					; 10
+
+	ld		a,(z_load)						; 13
+	cp		PCM_MIN_BUFFER					; 7
+vbl_hook		equ		$+1
+	jp		nc,vbl_wait_ack					; 10
+
+;-------------------------------------------
+; ACK wait loop after the buffer is depleted
+;-------------------------------------------
+vbl_wait_ack
+	ld		a,(z_vbl_ack)
+	or		a
+	jr		z,vbl_wait_ack
+
+;-------------------------------------------
+; VBL hook return point if acknowledged
+;-------------------------------------------
+vbl_ack_done
+	xor		a
+;	ld		(z_vbl_ack),a
+vbl_busy_write	equ		$+1
+	or		$00
+	ld		(z_busy),a
+	jr		nz,vbl_restore_fm
+vbl_exx
+	nop										; Replace with exx
 	ex		af,af'							; 4
-	ld		a,PCM_MIN_BUFFER				; 7
-	ld		(z_min_buffer),a				; 13
-	ex		af,af'							; 4
-	nop		; Change to "ei" ($fb) to enable the interrupt routine...
-	ret										; 4+10
+	ei										; 4
+	ret										; 10
+
+; Restore the DAC latch if the busy flag was set.
+; I don't really think of a case where this would be needed _unless_
+; the 68k manages to write to the YM2612 between the last DAC output
+; and exiting the VBL routine, however it seems like this is needed
+; anyway to reduce clicking noises.
+vbl_restore_fm
+	ld		a,b
+	ld		($4000),a
+	exx
+	ex		af,af'
+	ei
+	ret
 
 ;======================================================================
 ; MAIN LOOP
 ;----------------------------------------------------------------------
 entry3
-	ld		hl,PCM_MIN_BUFFER+(DEFAULT_MODE*256)
+	ld		hl,(PCM_DEFAULT_BUFFER)+(DEFAULT_MODE*256)
 	ld		(z_min_buffer),hl
+	ld		hl,z_mode_change
 
+;======================================================================
+; Main loop (hl == z_mode_change)
+;----------------------------------------------------------------------
 main_loop
-	ld		hl,main_loop
-	push	hl
-
 	ld		a,(z_mode)
+	ld		(entry3+1),a				; for flashcart savestates
 	ld		b,a
 	add		b
 	add		b
 	ld		(mode_table-1),a
 
 	xor		a
-	ld		(z_mode_change),a
+	ld		(hl),a
+
+	ld		hl,main_loop
+	push	hl
+	di
 
 ;======================================================================
 ; Main jump table
@@ -290,7 +380,9 @@ mode_table
 ; 0ch mixing main routine (Idle)
 ;----------------------------------------------------------------------
 m0_init
-	xor		a
+	ld		hl,vbl_wait_ack
+	ld		(vbl_hook),hl
+
 	ld		(z_pcm1_key_on),a
 	ld		(z_pcm2_key_on),a
 	ld		(z_pcm3_key_on),a
@@ -342,11 +434,13 @@ burn_27
 ; Max 134 cycles between writes on average.
 ;----------------------------------------------------------------------
 m2_init
+	ld		hl,m2_vbl
+	ld		(vbl_hook),hl
 	ld		a,$c3							; 7
 	ld		(m2_pcm1_enable),a				; 13
 	ld		a,$c3							; 7
 	ld		(m2_pcm2_enable),a				; 13
-	ld		h,high(z_pcm1_key_on)			; 10
+	ld		hl,z_mode_change				; 10
 
 m2_key_on
 ;-------------------------------------------; = 72 + ??
@@ -604,7 +698,9 @@ m2_pcm2_disabled
 	cp		(hl)							; 7
 
 ; disable pcm and wait until key on
+	di
 	call	z,idle_init						; 10
+	ei
 
 ;-------------------------------------------; = 84 + 23 = 107
 m2_pcm_done
@@ -657,6 +753,23 @@ m2_pcm_bufok
 	dec		(hl)							; 11
 	jp		m2_pcm_wait						; 10
 
+;======================================================================
+; VBL hook for PCM mode 2
+;----------------------------------------------------------------------
+m2_vbl
+;-------------------------------------------; = 57 + 28 + 10 = 95
+	dec		a								; 4
+	ld		(z_load),a						; 13
+	out_dac_slow							; 11 in, 10 out
+
+;-------------------------------------------; = 95 + 39 = 134
+	ld		a,(z_vbl_ack)					; 13
+	or		a								; 4
+	jr		z,.blah							; 12
+	jp		vbl_ack_done
+
+.blah
+	jp		vbl_loop						; 10
 
 ;======================================================================
 ; Fill sample buffer with silence when PCM 1 is disabled.
@@ -850,13 +963,15 @@ write_bank
 ;----------------------------------------------------------------------
 
 m3_init
+	ld		hl,m3_vbl
+	ld		(vbl_hook),hl
 	ld		a,$c3							; 7
 	ld		(m3_pcm1_enable),a				; 13
 	ld		a,$c3							; 7
 	ld		(m3_pcm2_enable),a				; 13
 	ld		a,$c3							; 7
 	ld		(m3_pcm3_enable),a				; 13
-	ld		h,high(z_pcm1_key_on)			; 10
+	ld		hl,z_mode_change				; 10
 
 m3_key_on
 ;-------------------------------------------; = 72 + ??
@@ -1214,6 +1329,34 @@ m3_pcm_bufok
 	dec		(hl)							; 11
 	jp		m3_pcm_wait						; 10
 
+;======================================================================
+; VBL hook for PCM mode 3
+;----------------------------------------------------------------------
+m3_vbl
+;-------------------------------------------; = 57 + 28 + 10 = 95
+	dec		a								; 4
+	ld		(z_load),a						; 13
+	out_dac_slow							; 11 in, 10 out
+
+;-------------------------------------------; = 95 + 106 = 201
+	ld		a,(z_vbl_ack)					; 13
+	or		a								; 4
+	jp		nz,vbl_ack_done					; 10
+
+	ld		a,$55							; 7
+
+	ld		a,(z_vbl_ack)					; 13
+	or		a								; 4
+	jp		nz,vbl_ack_done					; 10
+
+	nop										; 4
+	nop										; 4
+
+	ld		a,(z_vbl_ack)					; 13
+	or		a								; 4
+	jp		nz,vbl_ack_done					; 10
+
+	jp		vbl_loop						; 10
 
 ;======================================================================
 ; Fill sample buffer with silence when PCM 3 is disabled.
@@ -1326,9 +1469,10 @@ m3_pcm2_disabled	; in: 173  out: 73
 	cp		(hl)							; 7
 	jp		nz,m3_pcm_done					; 10
 
-	ld		hl,m3_pcm_done					; 10
-	push	hl								; 11
-	jp		idle_init
+	di
+	call	idle_init
+	ei
+	jp		m3_pcm_done
 
 ;-------------------------------------------; = 47 + 27 = 74
 .no_idle1
@@ -1505,6 +1649,18 @@ m3_pcm3_pitch		equ		$+1
 	ld		(m3_pcm3_enable),a				; 13
 	xor		a								; 4
 	ret										; 16
+
+;======================================================================
+clear_mem
+	ld		hl,z_busy
+	ld		bc,$00fd
+clear_mem2
+	push	hl
+	pop		de
+	inc		e
+	ld		(hl),a
+	ldir
+	ret
 
 	align	64,0
 ;======================================================================

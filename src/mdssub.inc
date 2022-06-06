@@ -31,8 +31,7 @@ z_mode_change	equ		$0e02	; Set to 1 to change mixing mode
 z_key_on		equ		$0e03	; Set to 1 after setting Key on
 z_min_buffer	equ		$0e04	; Requested minimum buffer size
 z_mode			equ		$0e05	; Current mixing mode
-
-z_dummy			equ		$0e06	; just a dummy variable to burn cycles
+z_vbl_ack		equ		$0e06	; DMA acknowledgement from main CPU
 
 z_pcm1			equ		$0e08		; PCM 1 variables
 z_pcm2			equ		z_pcm1+8	; PCM 2 variables
@@ -67,9 +66,9 @@ z_pcm3_addr		equ		z_pcm3+4
 z_pcm3_count	equ		z_pcm3+6
 
 z_stack			equ		$0f00
-z_buffer		equ		$0f00
+z_buffer		equ		$1f00
 
-z_vtab			equ		$1000
+z_vtab			equ		$0f00
 
 z_pcm_load		equ		z_load
 
@@ -93,7 +92,9 @@ mds_z80_get_vol	macro
 	clr.b	d1
 @no_clamp\@
 	not.b	d1
-	and.b	#$1f,d1
+	moveq	#15,d2
+	and.b	d2,d1
+	add.b	d2,d1
 	endm
 
 ;======================================================================

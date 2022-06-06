@@ -1,0 +1,333 @@
+; DMA simulation tester
+DEBUG_SCREEN equ 1
+
+; MD library includes
+	include "../../src/mdinit.68k"
+	include "../../src/mddef.inc"
+	include "../../src/mdlib.68k"
+	include "../../src/mdbug.68k"
+
+; MDSDRV core includes
+	include "../../src/mdsdrv.inc"
+	include "../../src/mdsseq.inc"
+	include "../../src/mdssub.inc"
+	include "../../src/mdsdrv.68k"
+
+; Sequence data list
+	include "../../out/mdsseq.inc"
+
+	if ~def(SE_MIN)
+SE_MIN equ BGM_MAX+1
+	endif
+	if ~def(SE_MAX)
+SE_MAX equ BGM_MAX
+	endif
+
+	rsset	$ffff0000
+
+ram_begin
+r_break			rs.w	1			; quick and dirty debug
+r_intcnt		rs.w	1			; Vint counter
+r_pcount0		rs.w	1			; VDP counter at beginning of sound driver
+r_pcount1		rs.w	1			; VDP counter at end of sound driver
+r_z80_load		rs.w	1			; Z80 load
+r_dma_delay		rs.w	1			; Fake DMA
+r_pause			rs.b	1			; pause flag
+r_attenuate		rs.b	1			; attenuate flag
+				rs.w	2
+
+r_driver		rs.w	WSIZE		; sound driver
+
+r_request		rs.w	1
+
+main:
+	jsr		vdp_init
+
+	bsr.w	pad_init
+
+	clr.w	d0
+	move.w	d0,r_intcnt
+	move.w	d0,r_pcount0
+	move.w	d0,r_pcount1
+
+	move.w	#$0400,r_dma_delay
+
+	lea		print_instructions(pc),a0
+	bsr.w	print_command
+
+	move.w	#$8154,vdp_control	; main screen turn on
+
+	lea		r_driver,a0
+	lea		MDSSEQ,a1
+	lea 	MDSPCM,a2
+	bsr.w	mds_init
+
+@wait
+	lea		r_driver,a0
+	moveq	#$12,d0				; get Z80 pcm mode
+	bsr.w	mds_command
+	tst.b	d0
+	beq.s	@wait
+	
+	moveq	#$11,d0				; enable DMA protection
+	moveq	#0,d1				; keep mixing mode
+	moveq	#100,d2				; buffer size = 100
+	bsr.w	mds_command
+
+	move.w	#$8174,vdp_control	; enable interrupt
+
+	move.w	#$2300,sr			; interrupt enable
+
+	tst.w	r_request
+	bne.s	@nz
+	move.w	#BGM_MIN,r_request
+@nz
+
+;====================================================================
+; Main loop
+;--------------------------------------------------------------------
+main_loop:
+	move.w	r_intcnt,d0
+@wait_vbl
+	move.w	r_intcnt,d1
+	eor.w	d0,d1
+	beq.s	@wait_vbl
+
+	bsr.w	read_input
+	bsr.w	print_counters
+	bsr.w	print_options
+	bra.w	main_loop
+
+;====================================================================
+; Print track struct data values
+;--------------------------------------------------------------------
+read_input:
+	lea		r_request,a0
+	move.w	joy1_press,d0
+	btst	#joy_bit_up,d0
+	bne.w	@up_pressed
+	btst	#joy_bit_down,d0
+	bne.w	@down_pressed
+	btst	#joy_bit_left,d0
+	bne		@left_pressed
+	btst	#joy_bit_right,d0
+	bne		@right_pressed
+	btst	#joy_bit_a,d0
+	bne.w	@a_pressed
+	btst	#joy_bit_b,d0
+	bne.w	@b_pressed
+	btst	#joy_bit_c,d0
+	bne.w	@c_pressed
+	btst	#joy_bit_x,d0
+	bne.w	@x_pressed
+	btst	#joy_bit_y,d0
+	bne.w	@y_pressed
+	btst	#joy_bit_z,d0
+	bne.w	@z_pressed
+;	btst	#joy_bit_start,d0
+;	bne		@start_pressed
+@exit
+	rts
+@up_pressed
+	cmp.w	#$0000,(a0)
+	beq.s	@exit
+	subq.w	#1,(a0)
+	rts
+@down_pressed
+	cmp.w	#SE_MAX,(a0)
+	beq.s	@exit
+	addq.w	#1,(a0)
+	rts
+@left_pressed
+	cmp.w	#$0000,r_dma_delay
+	beq.s	@exit
+	sub.w	#$0080,r_dma_delay
+	rts
+@right_pressed
+	cmp.w	#$0a00,r_dma_delay
+	beq.s	@exit
+	add.w	#$0080,r_dma_delay
+	rts
+@a_pressed	;start track
+	move.w	(a0),d0
+	move.w	#3,d1
+	cmpi.w	#SE_MIN,d0		;playing a sound effect?
+	bcs.s	@not_effect
+	subq.b	#1,d1
+	bra.s	@not_music
+@not_effect
+	clr.b	r_pause
+@not_music
+	lea		r_driver,a0
+	bra		mds_request		;request track
+@b_pressed	;stop track
+	move.w	#$8000,d0
+	move.w	#3,d1
+	lea		r_driver,a0
+	bra		mds_request
+@c_pressed	;fade out or fade in track
+	move.w	#$0002,d0		;Check BGM track mask
+	move.w	#3,d1
+	lea		r_driver,a0
+	bsr		mds_command
+	tst.w	d0				;This will be >0 if BGM is active
+	bne.s	@fade_out
+	move.w	r_request,d0
+	ori.w	#$2400,d0		;set fade in flags
+	move.w	#3,d1
+	bra		mds_request
+@fade_out
+	move.w	#$000a,d0		;start fade
+	move.w	#$01c0,d1		;fade rate & target
+	lea		r_driver,a0
+	bra		mds_command
+@x_pressed	;attenuate
+	move.w	#$000a,d0		;start fade
+	move.w	#$0314,d1		;fade rate & target
+	lea		r_driver,a0
+	bra		mds_command
+@y_pressed	;stop attenuate
+	move.w	#$000a,d0		;start fade
+	move.w	#$0300,d1		;fade rate & target
+	lea		r_driver,a0
+	bra		mds_command
+@z_pressed	;pause on/off
+	eor.b	#$ff,r_pause
+	move.w	#$000b,d0
+	move.w	#$0003,d1
+	move.b	r_pause,d2
+	lea		r_driver,a0
+	bra		mds_command
+
+;====================================================================
+; Print menu options
+;--------------------------------------------------------------------
+print_options:
+	suba.l	a1,a1
+	clr.w	d1
+	lea		@plist(pc),a0
+	bsr.w	print_command
+
+	cmpi.w	#SE_MIN,(a2)
+	bcc.s	@not_bgm
+
+	lea		@bgm(pc),a0
+	bsr.w	print_command
+	rts
+
+@not_bgm
+	lea		@se(pc),a0
+	bsr.w	print_command
+	rts
+
+@plist
+	p_palette	0
+	p_pos		24,11
+	p_hex_w		r_request
+	p_end
+@bgm
+	p_pos		24,6
+	p_text		"BGM:"
+	p_end
+@se
+	p_pos		24,6
+	p_text		"SE: "
+	p_end
+	even
+
+;====================================================================
+; Print vbl counters
+;--------------------------------------------------------------------
+print_counters:
+	suba.l	a1,a1
+	clr.w	d1
+	cmp.w	#$10000-$e000,r_pcount1
+	bcs.s	@not_lagging
+	add.w	#$6000,d1
+@not_lagging
+	lea		@plist(pc),a0
+	bsr.w	print_command
+	rts
+@plist
+	p_pos		1,22
+	p_hex_b		r_z80_load
+	p_shift		0,3
+	p_hex_w		r_intcnt
+	p_shift		0,5
+	p_hex_w		r_pcount0
+	p_shift		0,5
+	p_hex_w		r_pcount1
+	p_pos		3,12
+	p_hex_w		r_dma_delay
+	p_end
+	even
+
+;====================================================================
+; VBL
+;--------------------------------------------------------------------
+vbl:
+	movem.l	d0-d7/a0-a6,-(sp)
+
+	move.w	r_dma_delay,d0
+@burn_cycles
+	dbf		d0,@burn_cycles
+	stop_z80
+	move.b	#$ff,z80_ram+z_vbl_ack			; ack Z80 interrupt
+	move.b	z80_ram+z_pcm_load,r_z80_load	; get load
+	start_z80
+
+	bsr.w	pad_read
+
+;	move.w	vdp_counter,d0
+;	move.w	d0, r_pcount0
+	lea		r_driver,a0
+	bsr.w	mds_update
+
+	addq	#1, r_intcnt
+	move.w	vdp_counter,d0
+	move.w	d0, d1
+	neg.w	d0
+	move.w	d0, r_pcount0
+	sub.w	#$e000, d1
+	move.w	d1, r_pcount1
+
+	movem.l	(sp)+,d0-d7/a0-a6
+	rte
+hbl:
+	rte
+
+print_track_data_begin
+	p_pos		3,2
+	p_end
+
+print_instructions
+	p_palette	0
+	p_pos		1,2
+	p_text		"MDSDRV Test Program"
+	p_pos		3,2
+	p_text		"DMA Delay:"
+	p_pos		4,2
+	p_text		"Left/right to adjust value"
+	p_pos		24,24
+	p_text		"Up/Down: Select"
+	p_shift		1,-1
+	p_text		"A: Play, B: Stop"
+	p_shift		1,9
+	p_text		"C: Fade"
+	p_end
+
+	even
+
+MDSSEQ:
+	incbin "../../out/mdsseq.bin"
+	even
+
+	if *&$7fff
+	dcb.b	$8000-(*&$7fff),$ff
+	endif
+
+MDSPCM:
+	incbin "../../out/mdspcm.bin"
+	even
+
+; vim: set ft=asm68k sw=4 ts=4 noet:

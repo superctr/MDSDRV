@@ -170,3 +170,28 @@ These are currently all the possible command numbers for `mds_command`.
 - **Description**: Returns in `d0` the communication byte value, set in
 	the song data.
 
+##### `set_pcmmode`
+- **Command** `0x11`
+- **Description**: Set the PCM mixing mode and buffering level.
+
+	The byte in `d1` define the mixing mode. Valid values are
+    2 or 3, for mixing 2 or 3 channels respectively. If the value is 0,
+	the previous PCM mixing mode is kept.
+	See [mdsseq.md](the sequence format) for more information.
+
+	The byte in `d2` define the maximum buffering threshold.
+	When this is 0, the DMA buffer is disabled, allowing for low latency
+	PCM samples, however the Z80 needs to be stopped manually whenever
+	a DMA tranfer is done. If this is non-zero, DMA buffering is enabled,
+	and the value needs to be in the range 40-220. Other values may
+	result in buffer underruns or overruns causing audio glitches.
+
+	For more information see [dma.md](DMA protection).
+
+##### `get_pcmmode`
+- **Command** `0x12`
+- **Description**: Get the PCM mixing mode
+
+	Return the current PCM mode in `d0`. If the Z80 is still
+	initializing, this will return 0.
+

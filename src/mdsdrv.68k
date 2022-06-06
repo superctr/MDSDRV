@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.6 220526"
+	dc.b	"MDSDRV0.6 220606"
 version_str_end
 	dc.b	0
 	even
@@ -182,6 +182,8 @@ mds_command
 	bra.w	@get_tempo						; 0x0e
 	bra.w	@set_tempo						; 0x0f
 	bra.w	@get_comm						; 0x10
+	bra.w	@set_pcmmode					; 0x11
+	bra.w	@get_pcmmode					; 0x12
 @cmd_max	equ (*-@cmd_table)/4
 
 ;----------------------------------------------------------------------
@@ -394,6 +396,45 @@ mds_fade_rate	equ	*
 	move.b	w_comm(a0),d0
 	rts
 
+;----------------------------------------------------------------------
+; command 0x11 - set PCM mode
+;----------------------------------------------------------------------
+@set_pcmmode
+	movem.l	zram/zreq,-(sp)
+	move	sr,-(sp)
+	move.w	#$2700,sr						;disable interrupts
+	lea		z80_bus_request,zreq
+	lea		z80_ram,zram
+	move.b	d1,d0
+	bsr		mds_set_pcm_mode
+	moveq	#8,d0							; $08 - EX AF,AF' opcode
+	tst.b	d2
+	bne.s	@use_dma_protection
+	moveq	#-55,d0							; $C9 - RET opcode
+	moveq	#40,d2							; Min buffer size
+	st.b	z_vbl_ack(zram)					; Acknowledge pending...
+@use_dma_protection
+	move.b	d0,$0038(zram)					; Rewrite interrupt routine
+	move.b	d2,z_min_buffer(zram)
+@start_z80
+	mds_z80_start
+	move	(sp)+,sr
+	movem.l	(sp)+,zram/zreq
+	rts
+
+;----------------------------------------------------------------------
+; command 0x12 - get PCM mode
+;----------------------------------------------------------------------
+@get_pcmmode
+	movem.l	zram/zreq,-(sp)
+	move	sr,-(sp)
+	move.w	#$2700,sr						;disable interrupts
+	lea		z80_bus_request,zreq
+	lea		z80_ram,zram
+	mds_z80_wait_req
+	move.b	z_mode(zram),d0
+	bra.s	@start_z80
+
 ;======================================================================
 ; set PCM driver mode
 ;----------------------------------------------------------------------
@@ -405,13 +446,17 @@ mds_fade_rate	equ	*
 ; TRASHES
 ;	--
 ; Vblank interrupts should be disabled when calling this
+; Z80 needs to be started manually after calling this
 mds_set_pcm_mode
 	andi.b	#$10,w_pcm_mode(work)
 	or.b	d0,w_pcm_mode(work)
 	mds_z80_wait_req
+	tst.b	d0
+	bne.s	@no_skip
+	rts
+@no_skip
 	move.b	#1,z_mode_change(zram)
 	move.b	d0,z_mode(zram)
-	mds_z80_start
 	rts
 
 ;======================================================================
@@ -1313,6 +1358,7 @@ mds_update_seq
 ; 00-07 - clear flag
 ; 08-0F - set flag
 ; 80-8F - ch3 mask set
+; 90-9F - operator mask set (for non FM3)
 ;----------------------------------------------------------------------
 @cmd_flg
 	st		t_last_pitch(twork)				; force pitch update
@@ -1333,7 +1379,7 @@ mds_update_seq
 @cmd_flg_fm3
 	ori.l	#(1<<(nf+nf_fm3))|(1<<(nf+nf_vol)),flag
 	lsl.b	#3,@cmd					;TODO: could optimize by shifting
-	ori.b	#$80,@cmd				; set bit 7
+	eori.b	#$80,@cmd				; toggle bit 7
 	move.b	@cmd,t_op_mask(twork)	; we're reusing MSB of t_base_addr
 	bra.w	@next_command
 
@@ -1533,6 +1579,7 @@ mds_update_seq
 	move.w	d0,@tempreg
 	move.b	0(@tbase,@trackpos),d0
 	bsr.w	mds_set_pcm_mode
+	mds_z80_start
 	move.w	@tempreg,d0
 	bra.w	@next_command
 
@@ -2778,7 +2825,7 @@ mds_psg_update_env
 	moveq	#15,d2
 	move.b	t_vol(twork),@tvol
 	bmi.s	@no_convert
-	andi.w	#$007f,@tvol
+	ext.w	@tvol
 	move.b	mds_psg_vol_table(pc,@tvol),@tvol
 @no_convert
 	not.b	@tvol
@@ -2799,6 +2846,7 @@ mds_psg_update_env
 ; PCM/PSG volume conversion table
 ;======================================================================
 mds_pcm_convert_vol
+	ext.w	d1
 mds_psg_convert_vol
 	move.b	mds_psg_vol_table(pc,d1),d1
 	rts
