@@ -57,7 +57,8 @@ mds_init
 	bne.w	mds_init_error
 
 	move.l	(a1)+,@ver
-	move.l	a1,w_sdtop(a0)					; set sdtop
+	move.l	a1,(a0)							; set sdtop
+
 	swap	@ver
 
 	cmpi.w	#MDSDRV_MIN_VER,@ver			; compare version
@@ -457,6 +458,7 @@ mds_set_pcm_mode
 @no_skip
 	move.b	#1,z_mode_change(zram)
 	move.b	d0,z_mode(zram)
+mds_update_protect
 	rts
 
 ;======================================================================
@@ -471,12 +473,13 @@ mds_update
 @counter	equr	d0
 @seq_step	equr	d1
 @gtempo		equr	d2
+	move.l	(work),a_sdtop
+	bset	#7,(work)						; set protection flag
+	bne.s	mds_update_protect
 
 	lea		w_track(work),twork
 	lea		z80_bus_request,zreq
 	lea		z80_ram,zram
-
-	move.l	w_sdtop(work),a_sdtop
 
 	moveq	#(RCOUNT-1)<<1,rnum
 @next_request
@@ -586,6 +589,7 @@ mds_update_return				equ *
 	lea		TSIZE(twork),twork				; next track
 	dbra	tnum,@next_voice
 
+	bclr	#7,(work)						; clear protection
 	rts
 
 ;======================================================================
