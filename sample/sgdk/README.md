@@ -6,8 +6,19 @@ Kit (SGDK)](https://github.com/Stephane-D/SGDK).
 ## How to use MDSDRV in your own SGDK programs
 1. Copy `inc/mdsdrv.h`, `src/mdsdrv.c`, and `res/mdsdat.res` into your
    project.
-2. Copy `mdsdrv.bin`, `mdspcm.bin`, `mdsseq.bin`from the MDSDRV `out`
+2. Copy `mdsdrv.bin`, `mdspcm.bin`, `mdsseq.bin` from the MDSDRV `out`
    directory.
+
+### Using outside SGDK
+It is possible to use this code outside SGDK, however the following
+apply:
+1. The `mddseq` data must be aligned to start at an even offset.
+   (This should normally be done automatically by the compiler)
+2. The PCM data must be aligned to start at a 32kb bank boundary.
+   To do so, prepend `__attribute__((__aligned__(32768)))` to the array
+   definition.
+3. When building `mdsdrv.c`, make sure to build with `std=gnu11`
+   (or higher).
 
 ## Important notes
 To initialize MDSDRV, call `MDS_init()`.
