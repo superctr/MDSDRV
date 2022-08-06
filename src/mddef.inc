@@ -137,10 +137,10 @@ joy_start				equ %0001000000000000 ; 1P start
 joy_z					equ %0000100000000000 ; service
 joy_y					equ %0000010000000000 ; test
 joy_x					equ %0000000100000000 ; 1P coin
-joy_up					equ %0000000010000000
-joy_down				equ %0000000001000000
-joy_left				equ %0000000000100000
-joy_right				equ %0000000000010000
+joy_left				equ %0000000010000000
+joy_right				equ %0000000001000000
+joy_up					equ %0000000000100000
+joy_down				equ %0000000000010000
 joy_c					equ %0000000000000100
 joy_b					equ %0000000000000010
 joy_a					equ %0000000000000001
@@ -150,10 +150,10 @@ joy_bit_start			equ 12
 joy_bit_z				equ 11
 joy_bit_y				equ 10
 joy_bit_x				equ 9
-joy_bit_up				equ 7
-joy_bit_down			equ 6
-joy_bit_left			equ 5
-joy_bit_right			equ 4
+joy_bit_left			equ 7
+joy_bit_right			equ 6
+joy_bit_up				equ 5
+joy_bit_down			equ 4
 joy_bit_c				equ 2
 joy_bit_b				equ 1
 joy_bit_a				equ 0
