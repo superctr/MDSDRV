@@ -1,6 +1,13 @@
-MDSDRV
-======
+MDSDRV C2 branch
+================
 A sound driver for Sega Mega Drive/Genesis.
+
+This is a testing branch adding support for Sega System C2.
+
+There is no Z80 so PCM playback using YM2612 DAC is not possible.
+
+Currently the sound driver does not support or use the uPD7759 ADPCM
+chip. It can be used manually by your own code if needed though.
 
 ## Features
 - Runs on the 68000 with the Z80 controlling PCM playback.
@@ -99,11 +106,7 @@ automatically build the SGDK test program.
 - See [mdsseq.md](doc/mdsseq.md)
 
 #### Precautions when using DMA
-- See [dma.md](doc/dma.md)
-
-Currently the Z80 code does not have any protection against reading ROM
-during DMA transfers. Please halt Z80 by issuing a bus request before
-starting DMAs to ensure system stability.
+Not applicable to System C2
 
 ## Copyright
 &copy; 2019-2022 Ian Karlsson.
