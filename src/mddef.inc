@@ -154,8 +154,8 @@ joy_bit_up				equ 7
 joy_bit_down			equ 6
 joy_bit_left			equ 5
 joy_bit_right			equ 4
-joy_bit_b				equ 2
-joy_bit_c				equ 1
+joy_bit_c				equ 2
+joy_bit_b				equ 1
 joy_bit_a				equ 0
 
 	endif
