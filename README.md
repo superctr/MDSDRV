@@ -35,8 +35,7 @@ A sound driver for Sega Mega Drive/Genesis.
 - Integration with SGDK
 
 ### Upcoming features
-- Pico and System C/C2 ports are possible... Maybe I will...
-- Better DMA protection?
+- System C2 support is currently in the experimental `c2` branch.
 
 ## How to use
 Feel free to join the [Discord server](https://discord.com/invite/BPwM6PJv7T)
@@ -101,9 +100,9 @@ automatically build the SGDK test program.
 #### Precautions when using DMA
 - See [dma.md](doc/dma.md)
 
-Currently the Z80 code does not have any protection against reading ROM
-during DMA transfers. Please halt Z80 by issuing a bus request before
-starting DMAs to ensure system stability.
+The Z80 code has a protection mechanism against reading ROM
+during DMA transfers. Please read [dma.md](doc/dma.md) for information
+how to use it.
 
 ## Copyright
 &copy; 2019-2022 Ian Karlsson.
