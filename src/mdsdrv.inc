@@ -31,9 +31,16 @@ RCOUNT			equ		4			; request count
 TCOUNT			equ		16			; track count
 TSTACK_COUNT	equ		8			; stack size (in words)
 
-ASM68K			equ		1			; we're compiling 68k code...
 ASMZ80			equ		0
 PACK_Z80		equ		1			; =1 to compress Z80 code in ROM
+
+	if		~def(SYSTEM_C)
+ASM68K			equ		1			; we're compiling 68k code...
+ASMSYSC			equ		0
+	else
+ASM68K			equ		0
+ASMSYSC			equ		1			; Include dummy macros
+	endif
 
 ;======================================================================
 ; register define

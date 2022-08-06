@@ -243,8 +243,34 @@ mds_z80_unpack	macro
 
 	endif
 
-	if	ASMZ80
+	if	ASMSYSC
+mds_z80_get_vol		macro
+	endm
+mds_z80_wait_req	macro
+	endm
+mds_z80_wait_fm		macro
+	endm
+mds_z80_start		macro
+	endm
+mds_z80_cmd0		macro cmd
+	endm
+mds_z80_cmd2		macro cmd,arg
+	endm
+mds_z80_pcm_vol_start	macro ch,vol
+	endm
+mds_z80_pcm_start	macro ch
+	endm
+mds_z80_pcm_stop	macro ch
+	endm
+mds_z80_pcm_stop_i	macro ch
+	endm
+mds_z80_pcm_volume	macro ch,vol
+	endm
+mds_z80_unpack	macro
+	endm
+	endif
 
+	if	ASMZ80
 	endif
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:

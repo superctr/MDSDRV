@@ -1,0 +1,85 @@
+#title Levitated Trickles
+#composer Muscises
+#date 2021-10-21
+#platform megadrive
+
+@1 fm 7 0; Sine Chords
+	8,20,0,4,8,12,0,0,0,0
+	8,20,0,4,8,12,0,0,0,0
+	8,20,0,4,8,12,0,0,0,0
+	8,20,0,4,8,12,0,0,0,0
+
+@2 fm 1 0; Bass
+	31,0,0,7,0,29,0,0,5,0
+	22,0,15,7,0,42,0,0,3,0
+	26,31,15,7,1,21,0,0,2,0
+	31,0,9,7,0,0,0,0,0,0
+
+@3 fm 5 5; Kick
+	26,31,20,7,4,6,0,0,0,0
+	31,0,17,4,0,0,0,0,0,0
+	31,0,14,4,0,0,0,0,0,0
+	31,0,14,6,0,0,0,0,0,0
+
+@4 fm 1 7; Guitar
+	31,31,14,15,0,45,0,7,0,0
+	31,0,11,15,0,38,0,3,3,0
+	31,0,1,15,0,41,0,1,3,0
+	31,12,1,15,7,0,0,1,0,0
+
+@6 psg; closed hi-hat
+	15>0:12
+*30 @6v10o9b; D30a
+
+@7 psg; open hi-hat
+	15>0:24
+*31 @7v10o8b; D30b
+*32 @7v10o8c; D30c
+
+@8 psg; Long Decay
+	15>0:56 / 0
+
+@10 psg; Blank
+	15 / 0
+
+*100 o6l16b-r16e-<<b-r8f>b-e-fr16>b-f<<<e->fr16
+
+A t112
+A @2 v14Q8
+B @3 v12Q8
+D @4 v8Q8
+E @4 v6Q8
+F @4 v4Q8
+J 'mode 1'D30
+
+A [r1]4 L [l4o3b-b-r8>l16cce-fr16>b- | l4o3a-a-r8>l16cce-fr16>a- | l4o4e-e-r8l16cce-fr16>e- | /l4o3bbr8>l16cce-fr16>b]5 | [l8.o3g-g-l16>d-g-_2]
+B [r1]8 Lv12 [[l4o3ccl8.ccc8/r8l8cl16ccccr8crcrcc]l8ccccl16ccrccrcc]4
+C @1 'fm3 1000' l2.o6 fr4<br4b-r4>er4 | L[l2.o6 fr4<br4b-r4/>er4]5 | l2d-e-
+M @1 'fm3 0100' l2.o6 a-r4e-r4d-r4a-r4 | L[l2.o6 a-r4e-r4d-r4/a-r4]5 | l2eg-
+N @1 'fm3 0010' l2.o7 cr4<g-r4fr4br4 | L[l2.o7 cr4<g-r4fr4/br4]5 | l2a-b-
+O @1 'fm3 0001' l2.o7 e-r4<b-r4a-r4e-r4 | L[l2.o7 e-r4<b-r4a-r4/e-r4]5 | l2b>d-
+J [r1]4 LD30[l16aabaabaabaabaabb]11 | D0l16v2[@10o7b&)1]12 [l16G08v14o5d+/&]4 | G0D30[[aar16bacbar16aar16aaba]3 | aar16bacba | /aar16bacba] | D0l16v2o3bG8[@10o6b)2/&]7
+
+*101 [l8.o7b-<<b-16r16>b-<<b-16r8>>b->b-8]8
+*102 _0*101 [l16o7e-f8./V+5]4 V-15 [[l16o7a-b-8./V+5]4 V-15 [l16o7bb-8./V+5]4 V-15 [l16o7a-f8./V+5]4 V-15 /[l16o7a-g8./V+5]4 V-15]2
+D *101 LV20*102
+E r16K-24 p1*101 LV25*102
+F r8K16   p2*101 LV30*102
+
+;==================================================
+; Now for Something Different
+;==================================================
+
+A _0o3l2b->f4l12b-fb- | [l4<eb>e<b | l2b>f+4l12bf+b | l4<ebf+>c+ | /o3l2a->e-4l12a-e-a-]3
+B l4o3cr4l12V20[o7b-12V+5]6 | [v12l4o3cr4l12V20[o8eV+5]6 | v12l4o3cr4l12V20[o7b12V+5]6 | v12l4o3cr4l12V20[o8f+V+5]6 | /v12l4o3cr4l12V20[o8a-V+5]6]3
+C @1 'fm3 1000' l2.o6 fr4[dr4<ar4l2bb/l2.o6e-r4]3 
+M @1 'fm3 0100' l2.o6 a-r4[g-r4d-r4l2d-e-/l2.o6g-r4]3
+N @1 'fm3 0010' l2.o7 cr4[<ar4er4l2de/l2.o6b-r4]3
+O @1 'fm3 0001' l2.o7 e-r4[d-r4<g-r4l2g-a-/l2.o7d-r4]3
+J D0G0[v10@8o6b4>b4<<c4>b4]8 | [l8o6b8 D30a8 D0@8v8>b8 D30a8 D0@8v8<<c8 D30a16a16 D0@8v8>b8 l32D30aaaaD0]4
+*103 l6o5e-fa-b->e-b- [[o5eg+b_12]2 l12[b-bb-/V+5]4 V-15[a-b-a-/V+5]4 /_0V-15l6o5a-b>e-a-b>g-]2
+D V20*103 | v3_0[*100)1]4 _12[*100/)1]4
+E V25*103 | v1_0[*100)1]4 _12[*100/)1]4
+F V30*103 | v0_0[*100)1]4 | [r1]4
+
+B l16V20[o8c+V+5]16 | l16V20[o8g+V+5]16 | l16V20[o7b16V+5]16 | l16V20[o8f+V+5]16

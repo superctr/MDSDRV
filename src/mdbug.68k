@@ -130,11 +130,15 @@ bug1
 	move.b	#$df,(a0)
 	move.b	#$ff,(a0)
 
-	move.w	#$100,z80_reset
-	move.w	#$100,z80_bus_request
+	if		~def(SYSTEM_C)
+		move.w	#$100,z80_reset
+		move.w	#$100,z80_bus_request
+	endif
 
 	bsr.w	vdp_init
-	move.w	#$000,z80_reset
+	if		~def(SYSTEM_C)
+		move.w	#$000,z80_reset
+	endif
 
 	move.l	a7,a5				;pointer to exception frame
 
@@ -144,8 +148,10 @@ bug1
 	moveq	#35,d1
 	bsr.w	vdp_print
 
-	move.w	#$100,z80_reset
-	move.w	#$000,z80_bus_request
+	if		~def(SYSTEM_C)
+		move.w	#$100,z80_reset
+		move.w	#$000,z80_bus_request
+	endif
 
 	; print registers
 	lea		bug_tab(pc),a0
