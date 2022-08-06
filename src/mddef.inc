@@ -7,6 +7,10 @@ vdp_control				equ $c00004
 vdp_counter				equ $c00008
 vdp_debug				equ $c0001c
 
+	if 		~def(SYSTEM_C)
+;======================================================================
+; Mega Drive hardware defines
+;======================================================================
 z80_ram					equ $A00000	; start of Z80 RAM
 z80_ram_end				equ $A02000	; end of non-reserved Z80 RAM
 z80_bus_request			equ $A11100
@@ -29,6 +33,58 @@ sound_fm_a1				equ $A04002
 sound_fm_d1				equ $A04003
 sound_fm_status			equ $A04000
 
+z_fm_a0					equ	$4000
+z_fm_d0					equ	$4001
+z_fm_a1					equ	$4002
+z_fm_d1					equ	$4003
+
+z_fm_an					equ	$0000
+z_fm_dn					equ	$0001
+	else
+
+;======================================================================
+; System C/System C2 hardware defines
+;======================================================================
+z80_ram					equ $840001 ; No Z80, points at IO area instead
+z80_bus_request			equ $880001
+
+ioc_port_a				equ $840001
+ioc_port_b				equ $840003
+ioc_port_c				equ $840005
+ioc_port_d				equ $840007
+ioc_port_e				equ $840009
+ioc_port_f				equ $84000b
+ioc_port_g				equ $84000d
+ioc_port_h				equ $84000f
+ioc_adpcm_control		equ $84001d
+ioc_control				equ $84001f
+
+epm_bank				equ $800001 ; palette bank
+epm_ctrl				equ $800201 ; palette control
+
+color_ram				equ $8c0000
+
+adpcm_phrase			equ $880001
+
+; ym2612 (ym3438) wait requirement for SystemC2:
+;  after address write:   20 cycles
+;  after data write:      97 cycles (reg 21-9e)
+;                         55 cycles (reg a0-b6)
+sound_fm_a0				equ $840101
+sound_fm_d0				equ $840103
+sound_fm_a1				equ $840105
+sound_fm_d1				equ $840107
+sound_fm_status			equ $840100
+
+z_fm_a0					equ	$0100
+z_fm_d0					equ	$0102
+z_fm_a1					equ	$0104
+z_fm_d1					equ	$0106
+
+z_fm_an					equ	$0000
+z_fm_dn					equ	$0002
+	endif
+
 sound_psg				equ $C00011
 
 ;======================================================================
@@ -39,6 +95,10 @@ joy1_press				equ $fffffff2
 joy2_push				equ $fffffff4
 joy2_press				equ $fffffff6
 
+	if		~def(SYSTEM_C)
+;======================================================================
+; Mega Drive joypad
+;======================================================================
 joy_up					equ %0000000000000001
 joy_down				equ %0000000000000010
 joy_left				equ %0000000000000100
@@ -65,6 +125,40 @@ joy_bit_z				equ 8
 joy_bit_y				equ 9
 joy_bit_x				equ 10
 joy_bit_mode			equ 11
+
+	else
+
+;======================================================================
+; System C combined port E(hi) and A(lo)
+;======================================================================
+joy_is_6btn				equ %1000000000000000 ; fixed
+joy_mode				equ %0010000000000000 ; 2P start
+joy_start				equ %0001000000000000 ; 1P start
+joy_z					equ %0000100000000000 ; service
+joy_y					equ %0000010000000000 ; test
+joy_x					equ %0000000100000000 ; 1P coin
+joy_up					equ %0000000010000000
+joy_down				equ %0000000001000000
+joy_left				equ %0000000000100000
+joy_right				equ %0000000000010000
+joy_c					equ %0000000000000100
+joy_b					equ %0000000000000010
+joy_a					equ %0000000000000001
+
+joy_bit_mode			equ 13
+joy_bit_start			equ 12
+joy_bit_z				equ 11
+joy_bit_y				equ 10
+joy_bit_x				equ 9
+joy_bit_up				equ 7
+joy_bit_down			equ 6
+joy_bit_left			equ 5
+joy_bit_right			equ 4
+joy_bit_c				equ 2
+joy_bit_b				equ 1
+joy_bit_a				equ 0
+
+	endif
 
 last_vbl				equ $fffffff8
 
@@ -189,6 +283,7 @@ p_hex_l		macro
 	dc.l	$0a000000|(\1&$ffffff)
 	endm
 
+	if	~def(SYSTEM_C)
 ;======================================================================
 ; Z80 access macro
 ;======================================================================
@@ -218,6 +313,29 @@ reset_z80	macro
 start_z80	macro
 	move.w	#0,(z80_bus_request).l
 	endm
+
+;Dummy nop
+sysc_nop	macro
+	endm
+
+	else
+
+; System C has no z80
+stop_z80	macro
+	endm
+block_z80	macro
+	endm
+reset_z80	macro
+	endm
+start_z80	macro
+	endm
+sysc_nop	macro
+	rept	\1
+		nop
+	endr
+	endm
+
+	endif
 
 	list +
 ; vim: set ft=asm68k sw=4 ts=4 noet:

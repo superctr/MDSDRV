@@ -42,8 +42,13 @@ vdp_init:
 ;	dc.w	$8800	; 8 unused
 ;	dc.w	$8900	; 9 unused
 	dc.w	$8A10	;10 hint interval = 16
-	dc.w	$8B00	;11 exint off
-	dc.w	$8C81	;12 h40, s/h off, interlace off
+	if		~def(SYSTEM_C)
+		dc.w	$8B00	;11 exint off
+		dc.w	$8C81	;12 h40, s/h off, interlace off
+	else
+		dc.w	$8B00	;11 exint off, CPU controls color bus
+		dc.w	$8C41	;12 h40, s/h off, interlace off, shared palette
+	endif
 	dc.w	$8D38	;13 hscroll = $e000
 ;	dc.w	$8E00	;14 unused (128K VRAM mode)
 	dc.w	$8F02	;15 auto increment = 2
@@ -93,15 +98,29 @@ vdp_clear:
 ; TRASHES
 ;   a0-a1, d0-d5
 vdp_init_font
-	move.l	#vdp_control,a1
-
-	; init color
-	lea		init_color_data(pc), a0
-	move.l	#cram_write_flag, (a1)
-	move.w	#$3f, d0				; color count
+	if		def(SYSTEM_C)
+		move.l	#color_ram,a1
+		; init color
+		lea		init_color_data(pc), a0
+		move.w	#$3f, d0				; color count
 @next_pal:
-	move.w	(a0)+, vdp_data			; write palette data
-	dbra	d0, @next_pal
+		move.w	(a0)+,(a1)+				; write palette data
+		dbra	d0, @next_pal
+		move.b	#$06,epm_ctrl
+		move.l	#vdp_control,a1
+		move.w	#$8b80,(a1)			; VDP controls color bus
+	endif
+
+	if		~def(SYSTEM_C)
+		move.l	#vdp_control,a1
+		; init color
+		lea		init_color_data(pc), a0
+		move.l	#cram_write_flag, (a1)
+		move.w	#$3f, d0				; color count
+@next_pal:
+		move.w	(a0)+, vdp_data			; write palette data
+		dbra	d0, @next_pal
+	endif
 
 	; init font
 	lea		init_font_data(pc), a0
@@ -433,12 +452,14 @@ print_next
 ; TRASHES
 ;   d0
 pad_init:
-	block_z80
-	moveq	#$40,d0
-	move.b	d0,($A10009).l	; init port 1 (joypad 1)
-	move.b	d0,($A1000B).l	; init port 2 (joypad 2)
-	move.b	d0,($A1000D).l	; init port 3 (expansion)
-	start_z80
+	if		~def(SYSTEM_C)
+		block_z80
+		moveq	#$40,d0
+		move.b	d0,($A10009).l	; init port 1 (joypad 1)
+		move.b	d0,($A1000B).l	; init port 2 (joypad 2)
+		move.b	d0,($A1000D).l	; init port 3 (expansion)
+		start_z80
+	endif
 	rts
 
 ;==============================================================================
@@ -460,7 +481,9 @@ read_pad_port	macro
 ;   a0-a1, d1-d2
 pad_read:
 	lea		joy1_push(pc),a1	; address where joypad states are written
-	lea		$A10003,a0			; first	joypad port
+
+	if		~def(SYSTEM_C)
+		lea		$A10003,a0			; first	joypad port
 
 ; this joypad routine was written by Chilly Willy from gendev forum
 ; http://gendev.spritesmind.net/forum/viewtopic.php?p=9136
@@ -469,43 +492,48 @@ pad_read:
 ; exit:  d2 = pad value (0 0 0 1 M X Y Z S A C B R L D U) or
 ;                       (0 0 0 0 0 0 0 0 S A C B R L D U)
 @next_pad:
-	move.w  #$F000,d2			; no pad
-	block_z80
-	read_pad_port			; - 0 s a 0 0 d u - 1 c b r l d u
-	move.w	d0,d1
-	andi.w	#$0C00,d0
-	bne.b	@no_pad
-	read_pad_port			; - 0 s a 0 0 d u - 1 c b r l d u
-	nop
-	nop
-	read_pad_port			; - 0 s a 0 0 0 0 - 1 c b m x y z
-	move.w	d0,d2			; 6btn controller will return x0xx
-	andi.w	#$0F00,d0		; in this phase!
-	bne.s	@3btn
-	read_pad_port			; - 0 s a 1 1 1 1 - 1 c b r l d u
-;	start_z80
-;	andi.w	#0x0F00,d0		; 0 0 0 0 1 1 1 1 0 0 0 0 0 0 0 0
-;	cmpi.w	#0x0F00,d0
-	bra.s	@common			; six button pad
+		move.w  #$F000,d2			; no pad
+		block_z80
+		read_pad_port			; - 0 s a 0 0 d u - 1 c b r l d u
+		move.w	d0,d1
+		andi.w	#$0C00,d0
+		bne.b	@no_pad
+		read_pad_port			; - 0 s a 0 0 d u - 1 c b r l d u
+		nop
+		nop
+		read_pad_port			; - 0 s a 0 0 0 0 - 1 c b m x y z
+		move.w	d0,d2			; 6btn controller will return x0xx
+		andi.w	#$0F00,d0		; in this phase!
+		bne.s	@3btn
+		read_pad_port			; - 0 s a 1 1 1 1 - 1 c b r l d u
+	;	start_z80
+	;	andi.w	#0x0F00,d0		; 0 0 0 0 1 1 1 1 0 0 0 0 0 0 0 0
+	;	cmpi.w	#0x0F00,d0
+		bra.s	@common			; six button pad
 @3btn
-	move.w	#0x010F,d2		; three button pad
+		move.w	#0x010F,d2		; three button pad
 @common:
-	start_z80
-	lsl.b	#4,d2			; - 0 s a 0 0 0 0 m x y z 0 0 0 0
-	lsl.w	#4,d2			; 0 0 0 0 m x y z 0 0 0 0 0 0 0 0
-	andi.w	#0x303F,d1		; 0 0 s a 0 0 0 0 0 0 c b r l d u
-	move.b	d1,d2			; 0 0 0 0 m x y z 0 0 c b r l d u
-	lsr.w	#6,d1			; 0 0 0 0 0 0 0 0 s a 0 0 0 0 0 0
-	or.w	d1,d2			; 0 0 0 0 m x y z s a c b r l d u
-	eori.w	#0x1FFF,d2		; 0 0 0 1 M X Y Z S A C B R L D U
+		start_z80
+		lsl.b	#4,d2			; - 0 s a 0 0 0 0 m x y z 0 0 0 0
+		lsl.w	#4,d2			; 0 0 0 0 m x y z 0 0 0 0 0 0 0 0
+		andi.w	#0x303F,d1		; 0 0 s a 0 0 0 0 0 0 c b r l d u
+		move.b	d1,d2			; 0 0 0 0 m x y z 0 0 c b r l d u
+		lsr.w	#6,d1			; 0 0 0 0 0 0 0 0 s a 0 0 0 0 0 0
+		or.w	d1,d2			; 0 0 0 0 m x y z s a c b r l d u
+		eori.w	#0x1FFF,d2		; 0 0 0 1 M X Y Z S A C B R L D U
 @no_pad:
+	else
+		move.b	ioc_port_e,-(sp)
+		move.w	(sp)+,d2
+		move.b	ioc_port_a,d2
+		not.w	d2
+	endif
+
 	move.w	(a1),d1				; last push
 	eor.w	d2,d1
 	move.w	d2,(a1)+			; store push
 	and.w	d1,d2				; closed buttons only
 	move.w	d2,(a1)				; store press
-
 	rts
-
 
 ; vim: set ft=asm68k sw=4 ts=4 noet:

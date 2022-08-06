@@ -20,6 +20,18 @@ if %ERRORLEVEL% neq 0 goto error
 echo Make mdsdrv.bin ...
 tools\asm68k.exe /k /p /o ae- src\blob.68k, out\mdsdrv.bin >out\error.txt, , out\mdsdrv.lst
 if %ERRORLEVEL% neq 0 goto error
+
+mkdir out\zunkyou
+tools\romwak /p main.bin main.bin 2048 255
+tools\romwak /b main.bin out\zunkyou\even.bin out\zunkyou\odd.bin
+tools\romwak /h out\zunkyou\even.bin out\zunkyou\epr-16812.ic32 out\zunkyou\epr-16814.ic34
+tools\romwak /h out\zunkyou\odd.bin out\zunkyou\epr-16811.ic31 out\zunkyou\epr-16813.ic33
+rem Temporary until ADPCM tool is added
+copy out\zunkyou\epr-16813.ic33 out\zunkyou\epr-16810.ic4
+rem For debugging
+copy out\main.lst out\zunkyou\main.lst
+copy main.bin out\zunkyou\main.bin
+
 if "%GDK_WIN%"=="" goto nosgdk
 echo Make sgdk.bin
 copy /b out\mdsdrv.bin sample\sgdk\res

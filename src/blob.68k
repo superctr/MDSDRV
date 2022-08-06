@@ -1,3 +1,5 @@
+SYSTEM_C	 equ 1
+
 ; builds MDSDRV as binary blob
 	include "src/mddef.inc"
 	include "src/mdsdrv.inc"

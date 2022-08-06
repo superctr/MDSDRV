@@ -92,16 +92,27 @@ md_init
 
 entry:
 	move    #$2700,sr
-	tst.l	io_port_1_control
-	bne.s	@port_initialized
-	tst.w	io_expansion_control
+
+	if		~def(SYSTEM_C)
+		tst.l	io_port_1_control
+		bne.s	@port_initialized
+		tst.w	io_expansion_control
 @port_initialized:
-	bne.w	@system_initialized
-	move.b	io_version, d0
-	andi.b	#$0f,d0
-	beq.s	@no_tmss
-	move.l	#'SEGA',io_tmss
+		bne.w	@system_initialized
+		move.b	io_version, d0
+		andi.b	#$0f,d0
+		beq.s	@no_tmss
+		move.l	#'SEGA',io_tmss
 @no_tmss:
+	else
+		move.b	#$88,ioc_control		;Port D and H as outputs
+		move.b	#$f0,ioc_adpcm_control 	;reset ADPCM
+		move.b	#$30,ioc_port_d
+		move.b	#$30,ioc_port_h
+		move.b	#$07,epm_ctrl
+		move.b	#$00,epm_bank
+	endif
+
 	moveq   #0,d0
 	lea		(vdp_control), a0
 	tst.l	(a0)
@@ -116,20 +127,22 @@ entry:
 	move.w	#0,(a0)+
 	dbf     d7,@ram_clear
 @system_initialized:
-	move.w  #$100,z80_bus_request			; Send the Z80 a bus request.
-	move.w  #$100,z80_reset
+	if		~def(SYSTEM_C)
+		move.w  #$100,z80_bus_request			; Send the Z80 a bus request.
+		move.w  #$100,z80_reset
 @z80_wait:
-	btst	#0,z80_bus_request
-	bne.s	@z80_wait
-	lea		(@z80_code),a0
-	lea		(z80_ram),a1
-	move.w  #@z80_end-@z80_code-1,d0
+		btst	#0,z80_bus_request
+		bne.s	@z80_wait
+		lea		(@z80_code),a0
+		lea		(z80_ram),a1
+		move.w  #@z80_end-@z80_code-1,d0
 @z80_loop:
-	move.b  (a0)+,(a1)+
-	dbf		d0,@z80_loop
-	move.w	#0,z80_reset
-	move.w	#0,z80_bus_request
-	move.w	#$100,z80_reset
+		move.b  (a0)+,(a1)+
+		dbf		d0,@z80_loop
+		move.w	#0,z80_reset
+		move.w	#0,z80_bus_request
+		move.w	#$100,z80_reset
+	endif
 	bra.w	main
 
 @z80_code:

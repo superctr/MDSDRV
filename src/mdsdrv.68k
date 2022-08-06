@@ -34,7 +34,10 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.6 220606"
+	dc.b	"MDSDRV0.6 220806"
+	if		def(SYSTEM_C)
+		dc.b	"/SystemC2"
+	endif
 version_str_end
 	dc.b	0
 	even
@@ -84,10 +87,13 @@ mds_init
 	move.l	@zero,w_fm3_tl(a0)
 
 	move.w	#128,d1							; NTSC tempo
-	btst	#6,io_version
-	beq.s	@set_tempo
-	move.w	#107,d1							; PAL tempo
+
+	if		~def(SYSTEM_C)
+		btst	#6,io_version
+		beq.s	@set_tempo
+		move.w	#107,d1							; PAL tempo
 @set_tempo
+	endif
 	move.w	d1,w_gtempo(a0)					; set global tempo
 
 	lea		w_track(a0),a1					; track addr
@@ -102,10 +108,11 @@ mds_init
 	lea		TSIZE(twork),twork				; next track
 	dbra	d1,@next_track
 
-	move.w	#$100,z80_bus_request
-	move.w	#$100,z80_reset					; deassert reset
-
-	bsr.w	mds_z80_init
+	if		~def(SYSTEM_C)
+		move.w	#$100,z80_bus_request
+		move.w	#$100,z80_reset					; deassert reset
+		bsr.w	mds_z80_init
+	endif
 
 mds_halt
 	block_z80
@@ -253,10 +260,11 @@ mds_command
 	movem.l	zram/zreq,-(sp)
 	move	sr,-(sp)
 	bsr.s	@fm_prepare
-	move.b	d0,$4000(zram)
+	move.b	d0,z_fm_a0(zram)
 	nop
 	nop
-	move.b	d1,$4001(zram)
+	sysc_nop 1
+	move.b	d1,z_fm_d0(zram)
 	mds_z80_start
 	move.w	(sp)+,sr
 	movem.l	(sp)+,zram/zreq
@@ -278,10 +286,11 @@ mds_command
 	movem.l	zram/zreq,-(sp)
 	move	sr,-(sp)
 	bsr.s	@fm_prepare
-	move.b	d0,$4002(zram)
+	move.b	d0,z_fm_a1(zram)
 	nop
 	nop
-	move.b	d1,$4003(zram)
+	sysc_nop	1
+	move.b	d1,z_fm_d1(zram)
 	mds_z80_start
 	move	(sp)+,sr
 	movem.l	(sp)+,zram/zreq
@@ -401,40 +410,46 @@ mds_fade_rate	equ	*
 ; command 0x11 - set PCM mode
 ;----------------------------------------------------------------------
 @set_pcmmode
-	movem.l	zram/zreq,-(sp)
-	move	sr,-(sp)
-	move.w	#$2700,sr						;disable interrupts
-	lea		z80_bus_request,zreq
-	lea		z80_ram,zram
-	move.b	d1,d0
-	bsr		mds_set_pcm_mode
-	moveq	#8,d0							; $08 - EX AF,AF' opcode
-	tst.b	d2
-	bne.s	@use_dma_protection
-	moveq	#-55,d0							; $C9 - RET opcode
-	moveq	#40,d2							; Min buffer size
-	st.b	z_vbl_ack(zram)					; Acknowledge pending...
+	if		~def(SYSTEM_C)
+		movem.l	zram/zreq,-(sp)
+		move	sr,-(sp)
+		move.w	#$2700,sr					;disable interrupts
+		lea		z80_bus_request,zreq
+		lea		z80_ram,zram
+		move.b	d1,d0
+		bsr		mds_set_pcm_mode
+		moveq	#8,d0						; $08 - EX AF,AF' opcode
+		tst.b	d2
+		bne.s	@use_dma_protection
+		moveq	#-55,d0						; $C9 - RET opcode
+		moveq	#40,d2						; Min buffer size
+		st.b	z_vbl_ack(zram)				; Acknowledge pending...
 @use_dma_protection
-	move.b	d0,$0038(zram)					; Rewrite interrupt routine
-	move.b	d2,z_min_buffer(zram)
+		move.b	d0,$0038(zram)				; Rewrite interrupt routine
+		move.b	d2,z_min_buffer(zram)
 @start_z80
-	mds_z80_start
-	move	(sp)+,sr
-	movem.l	(sp)+,zram/zreq
+		mds_z80_start
+		move	(sp)+,sr
+		movem.l	(sp)+,zram/zreq
+	endif
 	rts
 
 ;----------------------------------------------------------------------
 ; command 0x12 - get PCM mode
 ;----------------------------------------------------------------------
 @get_pcmmode
-	movem.l	zram/zreq,-(sp)
-	move	sr,-(sp)
-	move.w	#$2700,sr						;disable interrupts
-	lea		z80_bus_request,zreq
-	lea		z80_ram,zram
-	mds_z80_wait_req
-	move.b	z_mode(zram),d0
-	bra.s	@start_z80
+	if		~def(SYSTEM_C)
+		movem.l	zram/zreq,-(sp)
+		move	sr,-(sp)
+		move.w	#$2700,sr					;disable interrupts
+		lea		z80_bus_request,zreq
+		lea		z80_ram,zram
+		mds_z80_wait_req
+		move.b	z_mode(zram),d0
+		bra.s	@start_z80
+	else
+		rts
+	endif
 
 ;======================================================================
 ; set PCM driver mode
@@ -449,15 +464,17 @@ mds_fade_rate	equ	*
 ; Vblank interrupts should be disabled when calling this
 ; Z80 needs to be started manually after calling this
 mds_set_pcm_mode
-	andi.b	#$10,w_pcm_mode(work)
-	or.b	d0,w_pcm_mode(work)
-	mds_z80_wait_req
-	tst.b	d0
-	bne.s	@no_skip
-	rts
+	if		~def(SYSTEM_C)
+		andi.b	#$10,w_pcm_mode(work)
+		or.b	d0,w_pcm_mode(work)
+		mds_z80_wait_req
+		tst.b	d0
+		bne.s	@no_skip
+		rts
 @no_skip
-	move.b	#1,z_mode_change(zram)
-	move.b	d0,z_mode(zram)
+		move.b	#1,z_mode_change(zram)
+		move.b	d0,z_mode(zram)
+	endif
 mds_update_protect
 	rts
 
@@ -613,8 +630,13 @@ mds_update_return				equ *
 	@ch_mapping		#-96,mds_psg_update		; 7
 	@ch_mapping		#-64,mds_psg3_update	; 8
 	@ch_mapping		#-32,mds_psgn_update	; 9
-	@ch_mapping		#10,mds_pcm2_ch_update	; a
-	@ch_mapping		#11,mds_pcm3_ch_update	; b
+	if		~def(SYSTEM_C)
+		@ch_mapping		#10,mds_pcm2_ch_update	; a
+		@ch_mapping		#11,mds_pcm3_ch_update	; b
+	else
+		@ch_mapping		#10,mds_dummy_update	; a
+		@ch_mapping		#11,mds_dummy_update	; b
+	endif
 	@ch_mapping		#12,mds_dummy_update	; c
 	@ch_mapping		#13,mds_dummy_update	; d
 	@ch_mapping		#14,mds_dummy_update	; e
@@ -1296,15 +1318,17 @@ mds_update_seq
 ; bit 7 = enable right speaker
 ;----------------------------------------------------------------------
 @cmd_pan
-	move.b	t_channel_id(twork),@cmd
-	cmpi.b	#6,@cmd							; fm only
-	bcc.w	@next_command
+	if		~def(SYSTEM_C)					; C/C2 is mono only
+		move.b	t_channel_id(twork),@cmd
+		cmpi.b	#6,@cmd							; fm only
+		bcc.w	@next_command
 
-	move.b	t_fm_pan_lfo(twork),@cmd
-	andi.b	#$3f,@cmd
-	or.b	0(@tbase,@trackpos),@cmd
-	move.b	@cmd,t_fm_pan_lfo(twork)
-	bset	#nf+nf_pan_lfo,flag
+		move.b	t_fm_pan_lfo(twork),@cmd
+		andi.b	#$3f,@cmd
+		or.b	0(@tbase,@trackpos),@cmd
+		move.b	@cmd,t_fm_pan_lfo(twork)
+		bset	#nf+nf_pan_lfo,flag
+	endif
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
@@ -1392,8 +1416,9 @@ mds_update_seq
 ;----------------------------------------------------------------------
 @cmd_fmreg
 	mds_z80_wait_fm
-	move.b	0(@tbase,@trackpos),$4000(zram)
-	move.b	1(@tbase,@trackpos),$4001(zram)	; 24
+	move.b	0(@tbase,@trackpos),z_fm_a0(zram)
+	sysc_nop	1
+	move.b	1(@tbase,@trackpos),z_fm_d0(zram)	; 24
 	mds_z80_start
 	bra.w	@next_command
 
@@ -1407,22 +1432,24 @@ mds_update_seq
 	clr.w	@cmd
 	move.b	t_channel_id(twork),@cmd
 
-	move.w	#$4000,@tempreg
+	move.w	#z_fm_a0,@tempreg
 	add.b	@fmcreg_port(pc,@cmd),@tempreg
 
 	move.b	@fmcreg_slot(pc,@cmd),@cmd
 	add.b	0(@tbase,@trackpos),@cmd
 
 	mds_z80_wait_fm
-	move.b	@cmd,0(zram,@tempreg)
-	move.b	1(@tbase,@trackpos),1(zram,@tempreg)
+	move.b	@cmd,z_fm_an(zram,@tempreg)
+	sysc_nop	1
+	move.b	1(@tbase,@trackpos),z_fm_dn(zram,@tempreg)
 	mds_z80_start
 	bra.w	@next_command
 
 @fmcreg_slot
 	dc.b	0,1,2,0,1,2 ; reg offset for channel
 @fmcreg_port
-	dc.b	0,0,0,2,2,2 ; port offset for channel
+	dc.b	0,0,0
+	dc.b	z_fm_dn*2,z_fm_dn*2,z_fm_dn*2	; port offset for channel
 
 ;----------------------------------------------------------------------
 ; fmtl - set FM TL
@@ -1557,34 +1584,43 @@ mds_update_seq
 ; CAUTION: this command must only be executed on FM6 or dummy channel
 ;----------------------------------------------------------------------
 @cmd_pcm
-	move.b	0(@tbase,@trackpos),@cmd
-	add.w	@cmd,@cmd
-	movea.w	0(@tbase,@cmd),tmpa0			; instr address
-	move.w	tmpa0,t_pcm_header(twork)
-	adda.l	a_sdtop,tmpa0
-	move.b	(tmpa0),t_pcm_pitch(twork)		; read sample rate
-	addq	#6,tmpa0
-	move.w	(tmpa0),t_pcm_length(twork)
-	ori.l	#((1<<(cf+cf_pcm_control))|(1<<(nf+nf_pcm_header))|(1<<(nf+nf_pcm_pitch))),flag
+	if		~def(SYSTEM_C)
+		move.b	0(@tbase,@trackpos),@cmd
+		add.w	@cmd,@cmd
+		movea.w	0(@tbase,@cmd),tmpa0			; instr address
+		move.w	tmpa0,t_pcm_header(twork)
+		adda.l	a_sdtop,tmpa0
+		move.b	(tmpa0),t_pcm_pitch(twork)		; read sample rate
+		addq	#6,tmpa0
+		move.w	(tmpa0),t_pcm_length(twork)
+		ori.l	#((1<<(cf+cf_pcm_control))|(1<<(nf+nf_pcm_header))|(1<<(nf+nf_pcm_pitch))),flag
+	else
+		move.l	#$7f7f7f7f,t_fm_tl(twork)		; Dummy
+		bset	#nf+nf_vol,flag
+	endif
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; pcmrate - set PCM sample rate
 ;----------------------------------------------------------------------
 @cmd_pcmrate
-	move.b	0(@tbase,@trackpos),t_pcm_pitch(twork)
-	bset	#nf+nf_pcm_pitch,flag
+	if		~def(SYSTEM_C)
+		move.b	0(@tbase,@trackpos),t_pcm_pitch(twork)
+		bset	#nf+nf_pcm_pitch,flag
+	endif
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
 ; pcmmode - switch PCM mixing mode
 ;----------------------------------------------------------------------
 @cmd_pcmmode
-	move.w	d0,@tempreg
-	move.b	0(@tbase,@trackpos),d0
-	bsr.w	mds_set_pcm_mode
-	mds_z80_start
-	move.w	@tempreg,d0
+	if		~def(SYSTEM_C)
+		move.w	d0,@tempreg
+		move.b	0(@tbase,@trackpos),d0
+		bsr.w	mds_set_pcm_mode
+		mds_z80_start
+		move.w	@tempreg,d0
+	endif
 	bra.w	@next_command
 
 ;======================================================================
@@ -1659,20 +1695,22 @@ mds_update_mtab
 
 	add.b	@fmcreg_slot(pc,d3),d2
 
-	move.w	#$4000,d4
+	move.w	#z_fm_a0,d4
 	add.b	@fmcreg_port(pc,d3),d4
 
 	mds_z80_wait_fm
-	move.b	d2,0(zram,d4)
+	move.b	d2,z_fm_an(zram,d4)
 	nop
-	move.b	d1,1(zram,d4)
+	sysc_nop	1
+	move.b	d1,z_fm_dn(zram,d4)
 	mds_z80_start
 	bra.w	@next_command
 
 @fmcreg_slot
 	dc.b	0,1,2,0,1,2 ; reg offset for channel
 @fmcreg_port
-	dc.b	0,0,0,2,2,2 ; port offset for channel
+	dc.b	0,0,0
+	dc.b	z_fm_dn*2,z_fm_dn*2,z_fm_dn*2 ; port offset for channel
 
 @commands
 	bra.w	@mtab_jump				;$80
@@ -1762,15 +1800,17 @@ mds_update_mtab
 ; $87 nn - set panning
 ;----------------------------------------------------------------------
 @mtab_pan
-	move.b	t_channel_id(twork),d2
-	cmpi.b	#6,d2							; fm only
-	bcc.w	@next_command
+	if		~def(SYSTEM_C)					; C/C2 is mono only
+		move.b	t_channel_id(twork),d2
+		cmpi.b	#6,d2						; fm only
+		bcc.w	@next_command
 
-	move.b	t_fm_pan_lfo(twork),d2
-	andi.b	#$3f,d2
-	or.b	d1,d2
-	move.b	d2,t_fm_pan_lfo(twork)
-	bset	#nf+nf_pan_lfo,flag
+		move.b	t_fm_pan_lfo(twork),d2
+		andi.b	#$3f,d2
+		or.b	d1,d2
+		move.b	d2,t_fm_pan_lfo(twork)
+		bset	#nf+nf_pan_lfo,flag
+	endif
 	bra.w	@next_command
 
 ;----------------------------------------------------------------------
@@ -2149,19 +2189,23 @@ mds_fm3_update_pitch
 	rts
 
 @write_one
-	move.b	d1,$4000(zram)
+	sysc_nop	2
+	move.b	d1,z_fm_a0(zram)
 	nop
 	nop
-	move.b	d0,$4001(zram)					;8+12 : 20
+	sysc_nop	1
+	move.b	d0,z_fm_d0(zram)				;8+12 : 20
 	ror.w	#8,d0							; 22  :  22
 	subq.b	#4,d1							;  4  :  28
 	nop
 	nop
 	nop										;4+4+4: 40
-	move.b	d1,$4000(zram)					; 14  :  54
+	sysc_nop	2
+	move.b	d1,z_fm_a0(zram)				; 14  :  54
 	nop
 	nop
-	move.b	d0,$4001(zram)					;8+12 : 20
+	sysc_nop	1
+	move.b	d0,z_fm_d0(zram)				;8+12 : 20
 	ror.w	#8,d0							; 22  :  22
 	rts
 
@@ -2194,8 +2238,10 @@ mds_fm_update_ins
 @nextop										; burn 83-14 = 69
 	bsr.s	@burn56							;     56 : 56
 @notbusy:
-	move.b	d0,0(zram,chnid)				;     14 : 70
-	move.b	#$7f,1(zram,chnid)				;        : 18
+	sysc_nop	4
+	move.b	d0,z_fm_an(zram,chnid)			;     14 : 70
+	sysc_nop	1
+	move.b	#$7f,z_fm_dn(zram,chnid)		;        : 18
 	addq.b	#4,d0							;  10/14 : 18 (14)
 	dbra	d2,@nextop						;  10/14 : 32
 
@@ -2211,8 +2257,10 @@ mds_fm_update_ins
 	moveq	#3,d2							;      4
 @nextop2									; burn 83-14 = 69
 	bsr.s	@burn56							;     56 : 56
-	move.b	d0,0(zram,chnid)				;     14 : 70
-	move.b	(tmpa1)+,1(zram,chnid)			;        : 18
+	sysc_nop	4
+	move.b	d0,z_fm_an(zram,chnid)			;     14 : 70
+	sysc_nop	1
+	move.b	(tmpa1)+,z_fm_dn(zram,chnid)	;        : 18
 	addq.b	#4,d0							;      4 :  4
 	dbra	d2,@nextop2						;  10/14 : 18 (14)
 	dbra	d3,@nextreg						;  10/14 : 32
@@ -2225,8 +2273,10 @@ mds_fm_update_ins
 	move.b	#$b0,d0							;      8 : 16
 	add.b	d1,d0							;      4 : 20
 	cmp.b	sound_fm_a0,d0					;12+4=16 : 36
-	move.b	d0,0(zram,chnid)				;     14 : 52
-	move.b	(tmpa1)+,1(zram,chnid)			;        : 18
+	sysc_nop	4
+	move.b	d0,z_fm_an(zram,chnid)			;     14 : 52
+	sysc_nop	1
+	move.b	(tmpa1)+,z_fm_dn(zram,chnid)	;        : 18
 	swap	chnid
 	rts
 
@@ -2291,9 +2341,11 @@ mds_fm_update_vol
 @no_overflow								;           52 to 54
 	nop										;       4 : 56
 @write_vol									;           56 to 62
-	move.b	d1,0(zram,chnid)				;      14 : 70-74
+	sysc_nop	4
+	move.b	d1,z_fm_an(zram,chnid)			;      14 : 70-74
 	nop										;       4 :  4
-	move.b	d0,1(zram,chnid)				;      14 : 18
+	sysc_nop	1
+	move.b	d0,z_fm_dn(zram,chnid)			;      14 : 18
 	subq.b	#4,d1							;       4 :  4
 	dbra	d2,@nextop						;   10/14 : 18 (14)
 	swap	chnid
@@ -2373,10 +2425,11 @@ mds_fm3_update_vol
 	add.b	d1,d1
 	add.b	d1,d1
 	add.b	#$42,d1
-	move.b	d1,$4000(zram)
+	move.b	d1,z_fm_a0(zram)
 	nop
 	nop
-	move.b	d0,$4001(zram)
+	sysc_nop	1
+	move.b	d0,z_fm_d0(zram)
 @skip_op1
 	rts
 
@@ -2391,10 +2444,11 @@ mds_fm3_update_flag
 	and.b	d1,t_op_mask(twork)
 @paused
 	and.b	d1,w_fm3_mask(work)
-	move.b	#$27,$4000(zram)
+	move.b	#$27,z_fm_a0(zram)
 	andi.b	#$40,d1
 	ori.b	#$15,d1
-	move.b	d1,$4001(zram)
+	sysc_nop	1
+	move.b	d1,z_fm_d0(zram)
 	rts
 
 ;======================================================================
@@ -2402,7 +2456,7 @@ mds_fm3_update_flag
 ;----------------------------------------------------------------------
 ; Assumes z80 is stopped and reg $28 is latched
 mds_fm_cutoff
-	move.b	chnid,$4001(zram)				; 12 cycles + 2 nop
+	move.b	chnid,z_fm_d0(zram)				; 12 cycles + 2 nop
 
 mds_fm3_cutoff
 	moveq	#3,d1
@@ -2420,8 +2474,10 @@ mds_fm3_cutoff
 	rol.l	#2,d0							;  4+8=12 : 56
 
 @notbusy:
-	move.b	d0,0(zram,chnid)				;     14 : 70
-	move.b	#$ff,1(zram,chnid)				;        : 18
+	sysc_nop	4
+	move.b	d0,z_fm_an(zram,chnid)			;     14 : 70
+	sysc_nop	1
+	move.b	#$ff,z_fm_dn(zram,chnid)		;        : 18
 	addq.b	#4,d0							;  10/14 : 18 (14)
 	dbra	d2,@nextop						;  10/14 : 32
 	swap	chnid
@@ -2437,21 +2493,31 @@ mds_fm3_cutoff
 ; TRASHES:
 ;  chnid
 mds_fm6_update
-	btst	#cf+cf_pcm_control,flag
-	bne.w	mds_pcm1_update
-	tst.b	w_pcm_mode(work)
-	bpl.s	mds_fm1_update
+	if		~def(SYSTEM_C)
+		btst	#cf+cf_pcm_control,flag
+		bne.w	mds_pcm1_update
+		tst.b	w_pcm_mode(work)
+		bpl.s	mds_fm1_update
 
-	bclr	#pe_pcm1,w_pcm_mode(work)		; send key off if we just
-	mds_z80_wait_req						; switched from PCM to FM
-	ori.b	#$80,z_pcm1_vol(zram)
-	mds_z80_start
+		bclr	#pe_pcm1,w_pcm_mode(work)	; send key off if we just
+		mds_z80_wait_req					; switched from PCM to FM
+		ori.b	#$80,z_pcm1_vol(zram)
+		mds_z80_start
+	endif
 
 mds_fm1_update
-	bset	#17,chnid						; $4002
+	if		~def(SYSTEM_C)
+		bset	#17,chnid						; $4002
+	else
+		bset	#18,chnid						; $0104
+	endif
 mds_fm0_update
 @fm			equr	tmpa0
-	bset	#30,chnid						; $4000
+	if		~def(SYSTEM_C)
+		bset	#30,chnid						; $4000
+	else
+		bset	#24,chnid						; $0100
+	endif
 ;----------------------------------------------------------------------
 ; key_off update
 ;----------------------------------------------------------------------
@@ -2461,7 +2527,7 @@ mds_fm0_update
 	bclr	#cf+cf_key_on,flag
 
 	mds_z80_wait_fm
-	move.b	#$28,$4000(zram)
+	move.b	#$28,z_fm_a0(zram)
 
 	move.b	t_op_mask(twork),d0
 	bpl.s	@normal_key_off
@@ -2474,7 +2540,7 @@ mds_fm0_update
 	move.b	d0,w_fm3_mask(work)
 	add.b	d0,d0
 	addq.b	#2,d0
-	move.b	d0,$4001(zram)
+	move.b	d0,z_fm_d0(zram)
 
 	bclr	#nf+nf_fm3,flag
 	beq.s	@no_key_off
@@ -2495,7 +2561,7 @@ mds_fm0_update
 @normal_key_off
 	tst.l	flag							; enable flag cleared?
 	bpl.w	mds_fm_cutoff
-	move.b	chnid,$4001(zram)				; 12 cycles + 2 nop
+	move.b	chnid,z_fm_d0(zram)				; 12 cycles + 2 nop
 
 @no_key_off
 ;----------------------------------------------------------------------
@@ -2568,15 +2634,18 @@ mds_fm0_update
 	swap	chnid
 	addi.b	#$a4,d1
 	mds_z80_wait_fm
-	move.b	d1,0(zram,chnid)
+	move.b	d1,z_fm_an(zram,chnid)
 	nop
-	move.b	d0,1(zram,chnid)				; 4+14 : 18
+	sysc_nop	1
+	move.b	d0,z_fm_dn(zram,chnid)			; 4+14 : 18
 	ror.w	#8,d0							; 22  :  22
 	subq.b	#4,d1							;  4  :  28
 	move.w	d4,t_last_pitch(twork)			; 12  :  40
-	move.b	d1,0(zram,chnid)				; 14  :  54
+	sysc_nop	2
+	move.b	d1,z_fm_an(zram,chnid)			; 14  :  54
 	nop
-	move.b	d0,1(zram,chnid)				; 4+14 : 18
+	sysc_nop	1
+	move.b	d0,z_fm_dn(zram,chnid)			; 4+14 : 18
 	mds_z80_start
 	swap	chnid
 
@@ -2592,9 +2661,10 @@ mds_fm0_update
 	swap	chnid
 	addi.b	#$b4,d1
 	mds_z80_wait_fm
-	move.b	d1,0(zram,chnid)
+	move.b	d1,z_fm_an(zram,chnid)
 	nop
-	move.b	d0,1(zram,chnid)				; 4+14 : 18
+	sysc_nop	1
+	move.b	d0,z_fm_dn(zram,chnid)			; 4+14 : 18
 	mds_z80_start
 	swap	chnid
 
@@ -2617,11 +2687,11 @@ mds_fm0_update
 
 @no_fm3_key_on
 	mds_z80_wait_fm
-	move.b	#$28,$4000(zram)
+	move.b	#$28,z_fm_a0(zram)
 	add.b	d0,d0							; 4 :  4
 	andi.b	#$f0,d0							; 8 : 12
 	or.b	chnid,d0						; 4 : 16
-	move.b	d0,$4001(zram)					;12 : 28
+	move.b	d0,z_fm_d0(zram)				;12 : 28
 	mds_z80_start
 
 @no_key_on
@@ -2636,13 +2706,13 @@ mds_fm3_update
 
 	bclr	#cf+cf_key_on,flag
 	mds_z80_wait_fm
-	move.b	#$28,$4000(zram)
+	move.b	#$28,z_fm_a0(zram)
 	move.b	d4,d0
 	and.b	w_fm3_mask(work),d0
 	move.b	d0,w_fm3_mask(work)
 	add.b	d0,d0
 	addq.b	#2,d0
-	move.b	d0,$4001(zram)
+	move.b	d0,z_fm_d0(zram)
 	bclr	#nf+nf_vol,flag
 	bne.s	@set_vol
 	bra.s	@no_vol_stopped_z80
@@ -2678,10 +2748,11 @@ mds_fm3_update
 	or.b	w_fm3_mask(work),d4
 	move.b	d4,w_fm3_mask(work)
 	mds_z80_wait_fm
-	move.b	#$28,$4000(zram)
+	move.b	#$28,z_fm_a0(zram)
 	add.b	d4,d4
 	andi.b	#$f2,d4			;assumes that bit1 of the op_mask is unused
-	move.b	d4,$4001(zram)
+	sysc_nop	1
+	move.b	d4,z_fm_d0(zram)
 	mds_z80_start
 
 @no_key_on
@@ -2968,6 +3039,10 @@ mds_dummy_update
 	bra.w	mds_update_return
 
 ;======================================================================
+; PCM functions (mega drive only)
+;======================================================================
+	if		~def(SYSTEM_C)
+;======================================================================
 ; PCM2 channel update (only check for FM3 and PCM2)
 ;----------------------------------------------------------------------
 mds_pcm2_ch_update
@@ -3004,10 +3079,10 @@ mds_pcm1_update
 	bne.s	@no_fm_key_off					; switched from FM to PCM
 
 	mds_z80_wait_fm
-	move.b	#$28,$4002(zram)
+	move.b	#$28,z_fm_a1(zram)
 	nop
 	nop
-	move.b	#$02,$4003(zram)				; 12 cycles + 2 nop
+	move.b	#$02,z_fm_d1(zram)				; 12 cycles + 2 nop
 	mds_z80_start
 
 @no_fm_key_off
@@ -3016,10 +3091,10 @@ mds_pcm1_update
 
 	move.b	t_fm_pan_lfo(twork),d1			; FM6 can always control
 	mds_z80_wait_fm							; the panning
-	move.b	#$b6,$4002(zram)
+	move.b	#$b6,z_fm_a1(zram)
 	nop
 	nop
-	move.b	d1,$4003(zram)
+	move.b	d1,z_fm_d1(zram)
 	mds_z80_start
 	bra.s	mds_pcm_update
 
@@ -3126,12 +3201,12 @@ mds_pcm_key_off
 	mds_z80_pcm_stop d0
 	bra.w	mds_update_return
 
-
+	endif
 
 ;======================================================================
 ; Z80 access functions
 ;======================================================================
-
+	if		~def(SYSTEM_C)
 
 ;======================================================================
 ; Upload Z80 program. Assumes Z80 is already stopped
@@ -3182,6 +3257,8 @@ mds_z80_init
 	even
 @volume_table
 	dc.w	256,203,161,128,102,81,64,51,40,32,26,20,16,13,10,0
+
+	endif
 
 ;----------------------------------------------------------------------
 ; vim: set ft=asm68k sw=4 ts=4 noet:
