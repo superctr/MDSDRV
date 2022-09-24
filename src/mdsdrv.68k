@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.6 220606"
+	dc.b	"MDSDRV0.6 220924"
 version_str_end
 	dc.b	0
 	even
@@ -66,20 +66,21 @@ mds_init
 
 	moveq	#0,@zero
 	move.l	@zero,w_request(a0)				; clear request
-	move.l	@zero,2+w_request(a0)
+	move.l	@zero,4+w_request(a0)
 	move.l	@zero,w_tempo(a0)				; clear tempo
-	move.l	@zero,2+w_tempo(a0)
+	move.l	@zero,4+w_tempo(a0)
 	move.l	@zero,w_counter(a0)				; clear counter
-	move.l	@zero,2+w_counter(a0)
+	move.l	@zero,4+w_counter(a0)
 	move.l	@zero,w_seq_step(a0)			; clear seq step
-	move.l	@zero,2+w_seq_step(a0)
+	move.l	@zero,4+w_seq_step(a0)
 	move.l	@zero,w_volume(a0)				; clear trk volume
-	move.l	@zero,2+w_volume(a0)
+	move.l	@zero,4+w_volume(a0)
 	move.l	@zero,w_tmask(a0)				; clear trk mask
-	move.l	@zero,2+w_tmask(a0)
+	move.l	@zero,4+w_tmask(a0)
 	move.l	@zero,w_chmask(a0)				; clear chmask
-	move.l	@zero,2+w_chmask(a0)
-	move.l	@zero,w_priority(a0)			; clear priority/fade
+	move.l	@zero,4+w_chmask(a0)
+	move.l	@zero,w_bgm_volume(a0)			; reset volume
+	move.l	@zero,w_fade_target(a0)			; clear priority/fade
 	move.w	@zero,w_fm3_mask(a0)			; clear fm3mask
 	move.l	@zero,w_fm3_tl(a0)
 
