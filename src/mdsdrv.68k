@@ -34,7 +34,7 @@ mds_top
 ; ABI version string
 ;----------------------------------------------------------------------
 version_str
-	dc.b	"MDSDRV0.6 220924"
+	dc.b	"MDSDRV0.6 230612"
 version_str_end
 	dc.b	0
 	even
@@ -873,15 +873,19 @@ mds_handle_request
 ;======================================================================
 ; update track priorities
 ;----------------------------------------------------------------------
+; NOTE: the upper word of d7 (flag/rnum) must not be modified, as we
+; rely on it being cleared later in mds_update_priority_return.
 mds_update_priority
+@nf			equ		nf-16
+@cf			equ		cf-16
 	clr.b	w_priority(work)				; clear priority flag
 	lea		w_track(work),twork				; first track's addr
 	move.w	#TCOUNT-1,tnum
 @next_voice
-	move.l	t_note_flag(twork),flag
-	btst	#cf+cf_suspend,flag
+	move.w	t_note_flag(twork),flag			; touches N flag...
+	btst	#@cf+cf_suspend,flag			; does not touch N flag...
 	bne.s	@suspended
-	bpl.s	@voice_not_enabled
+	bpl.s	@voice_not_enabled				; ...N flag checked here
 @suspended
 	lea		w_chmask(work),tmpa0			; channel mask
 	move.b	t_channel_id(twork),chnid		; check priority
@@ -921,8 +925,8 @@ mds_update_priority
 	bra.s	@voice_not_enabled
 @no_priority
 	st		t_last_pitch(twork)
-	ori.l	#(nm_restore<<nf)|(1<<(cf+cf_background)),flag
-	move.l	flag,t_note_flag(twork)
+	ori.w	#(nm_restore<<@nf)|(1<<(@cf+cf_background)),flag
+	move.w	flag,t_note_flag(twork)
 @voice_not_enabled
 	lea		TSIZE(twork),twork				; next track
 	dbra	tnum,@next_voice
