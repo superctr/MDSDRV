@@ -68,6 +68,16 @@ operating systems, `wine` is required.
 	# creates `main.bin` (test ROM) and `mdsdrv.bin` (sound driver blob)
 	wine /c build.bat
 
+Alternatively, if you use a Unix-like system and `sjasmplus`, `salvador`,
+and `mdslink` are installed to your `PATH`, you can use the `Makefile`
+to build MDSDRV. Note that you still need `wine` to run `asm68k.exe`.
+
+	# creates `mdsdrv.bin` (sound driver blob)
+	make mdsdrv
+
+	# creates `main.bin` (test ROM)
+	make demo
+
 To quickly generate a ROM (in Windows) with a single song, you can drag
 and drop a .MDS or .MML file into "quickrom.bat"
 
@@ -88,8 +98,8 @@ calling the correct addresses inside the `mdsdrv.bin` blob.
 #### SGDK test project
 - See [sample/sgdk](sample/sgdk/README.md).
 
-If the SGDK environment variables are set, calling `build.bat` should
-automatically build the SGDK test program.
+If the SGDK environment variables are set, calling `build.bat` or
+`make sgdk-demo` should automatically build the SGDK test program.
 
 #### Interfaces
 - See [api.md](doc/api.md)
